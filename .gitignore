@@ -1,3 +1,6 @@
 bin/
 build/
 devel/
+.vscode/
+.catkin_workspace
+build.sh
