@@ -21,14 +21,6 @@ void FeatureTracker::IntrinsicParameter(){
     }
 }
 
-void FeatureTracker::getFeatureFrame(double t, const cv::Mat &_img0, const cv::Mat &_img1)
-{
-    map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> featureFrame;
-    featureFrame = trackImage(t, _img0, _img1);
-
-    
-
-}
 // 计算两个点的距离
 double FeatureTracker::distance(cv::Point2f &pt1, cv::Point2f &pt2)
 {

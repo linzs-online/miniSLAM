@@ -29,11 +29,13 @@ public:
     map<int, cv::Point2f> cur_un_pts_map, prev_un_pts_map, prevLeftPtsMap;
     map<int, cv::Point2f> cur_un_right_pts_map, prev_un_right_pts_map;
     cv::Mat imTrack;
+    int inputImageCnt = 0;
+    FeatureMap featureFrame;
+    queue<pair<double, FeatureMap>> featureBuf;
 
     FeatureTracker(Parameters::Ptr Ptr);
     ~FeatureTracker();
     void IntrinsicParameter();
-    void getFeatureFrame(double t, const cv::Mat &_img, const cv::Mat &_img1);
     FeatureMap trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1);
     double distance(cv::Point2f &pt1, cv::Point2f &pt2);
     bool inBorder(const cv::Point2f &pt);

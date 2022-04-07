@@ -74,19 +74,23 @@ void sync_process(ImageSubscriber::Ptr &imageSubscriber_Ptr,
                 printf("find img0 and img1\n");
             }
         }
-        // else
-        // {
-        //     ROS_ERROR("Image Read Error !! ");
-        // }
         m_buf.unlock();
         //ROS_INFO("%d  %d", imageSubscriber_Ptr->img0_buf.size(), imageSubscriber_Ptr->img1_buf.size());
         if(!image0.empty() || !image1.empty())
-            featureTracker_Ptr->trackImage(time, image0, image1);
-        cv::imshow("特征点提取", featureTracker_Ptr->imTrack);
-        cv::waitKey(1);
-        // 把特征图片发布出去，用于可视化
-        featurePub_Ptr->publish(featureTracker_Ptr->imTrack, time);
+            featureTracker_Ptr->featureFrame = featureTracker_Ptr->trackImage(time, image0, image1);
+        // cv::imshow("特征点提取", featureTracker_Ptr->imTrack);
+        // cv::waitKey(1);
 
+        // 把特征点图片发布出去，用于可视化
+        featurePub_Ptr->publish(featureTracker_Ptr->imTrack, time);
+        
+        // 把特征点存到特征缓冲队列里面，供后面使用IMU融合
+        if(featureTracker_Ptr->inputImageCnt % 2 == 0)
+        {
+            m_buf.lock();
+            featureTracker_Ptr->featureBuf.push(make_pair(time, featureTracker_Ptr->featureFrame));
+            m_buf.unlock();
+        }
         std::chrono::milliseconds dura(2);
         std::this_thread::sleep_for(dura);
     }
@@ -108,6 +112,7 @@ int main(int argc, char * argv[])
     // 注册图像订阅ROS 线程
     ImageSubscriber::Ptr imageSubscriber_ptr = make_shared<ImageSubscriber>(nh, parameters_ptr->IMAGE0_TOPIC, 
                                                                                     parameters_ptr->IMAGE1_TOPIC, 100);
+    IMU_subscriber::Ptr ImuSub_Ptr = make_shared<IMU_subscriber>(nh, parameters_ptr->IMU_TOPIC, 2000);
     // 图像特征提取类
     FeatureTracker::Ptr featureTracker_ptr = make_shared<FeatureTracker>(parameters_ptr);
 

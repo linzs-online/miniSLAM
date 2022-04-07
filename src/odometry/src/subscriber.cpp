@@ -1,5 +1,6 @@
 #include "../inc/subscriber.h"
 #include <mutex>
+#include <ros/transport_hints.h>
 
 std::mutex mutex_buf;
 ImageSubscriber::ImageSubscriber(ros::NodeHandle& nh, 
@@ -26,4 +27,31 @@ void ImageSubscriber::img1_callback(const sensor_msgs::ImageConstPtr &img1_msg){
 
 ImageSubscriber::~ImageSubscriber(){
 
+}
+
+
+
+IMU_subscriber::IMU_subscriber(ros::NodeHandle& nh, std::string topic_name, size_t buff_size):nh_(nh)
+{   
+    // NOTE tcpNoDelay: a TCP transport is used, specifies whether or not to use TCP_NODELAY to provide a potentially lower-latency connection. 
+    subscriber_ = nh_.subscribe(topic_name, buff_size, &IMU_subscriber::imu_callback, this, ros::TransportHints().tcpNoDelay());
+}
+
+void IMU_subscriber::imu_callback(const sensor_msgs::ImuConstPtr &imu_msg)
+{
+    double t = imu_msg->header.stamp.toSec();
+    double dx = imu_msg->linear_acceleration.x;
+    double dy = imu_msg->linear_acceleration.y;
+    double dz = imu_msg->linear_acceleration.z;
+    double rx = imu_msg->angular_velocity.x;
+    double ry = imu_msg->angular_velocity.y;
+    double rz = imu_msg->angular_velocity.z;
+    Vector3d acc(dx, dy, dz);
+    Vector3d gyr(rx, ry, rz);
+    
+    //ROS_INFO("%f", acc.data());
+    cout << acc.data() << endl;
+    //estimator.inputIMU(t, acc, gyr);
+    
+    return;
 }

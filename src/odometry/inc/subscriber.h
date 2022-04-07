@@ -2,7 +2,9 @@
 #include <ros/ros.h>
 #include <queue>
 #include <sensor_msgs/Image.h>
+#include <sensor_msgs/Imu.h>
 #include <std_msgs/String.h>
+#include <Eigen/Core>
 
 using namespace std;
 class ImageSubscriber
@@ -23,3 +25,15 @@ public:
     ~ImageSubscriber();
 };
 
+class IMU_subscriber
+{
+private:
+    ros::NodeHandle nh_;
+    ros::Subscriber subscriber_;
+    void imu_callback(const sensor_msgs::ImuConstPtr &imu_msg);
+
+public:
+    using Ptr = shared_ptr<IMU_subscriber>;
+    using Vector3d = Eigen::Matrix<double, 3, 1>;
+    IMU_subscriber(ros::NodeHandle& nh, std::string topic_name, size_t buff_size);
+};
