@@ -39,6 +39,7 @@ IMU_subscriber::IMU_subscriber(ros::NodeHandle& nh, std::string topic_name, size
 
 void IMU_subscriber::imu_callback(const sensor_msgs::ImuConstPtr &imu_msg)
 {
+    mutex_buf.lock();
     double t = imu_msg->header.stamp.toSec();
     double dx = imu_msg->linear_acceleration.x;
     double dy = imu_msg->linear_acceleration.y;
@@ -48,10 +49,9 @@ void IMU_subscriber::imu_callback(const sensor_msgs::ImuConstPtr &imu_msg)
     double rz = imu_msg->angular_velocity.z;
     Vector3d acc(dx, dy, dz);
     Vector3d gyr(rx, ry, rz);
-    
-    //ROS_INFO("%f", acc.data());
-    cout << acc.data() << endl;
+    acc_buf.push(make_pair(t, acc));
+    gyr_buf.push(make_pair(t, gyr));
+    mutex_buf.unlock();
     //estimator.inputIMU(t, acc, gyr);
-    
     return;
 }

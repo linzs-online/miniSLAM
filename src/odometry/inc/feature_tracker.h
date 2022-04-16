@@ -7,6 +7,7 @@
 #include "../../camera_models/include/camodocal/camera_models/PinholeCamera.h"
 
 using namespace std;
+                    // feature ID        Camare ID        feature:      
 using FeatureMap =  map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>;
 
 class FeatureTracker
@@ -14,6 +15,7 @@ class FeatureTracker
 public:
     using Ptr = shared_ptr<FeatureTracker>;
     Parameters::Ptr parameters;
+    
     double cur_time, prev_time;
     cv::Mat cur_image, prev_image;
     int row, col;
@@ -34,6 +36,7 @@ public:
     queue<pair<double, FeatureMap>> featureBuf;
 
     FeatureTracker(Parameters::Ptr Ptr);
+    FeatureTracker() = delete;
     ~FeatureTracker();
     void IntrinsicParameter();
     FeatureMap trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1);

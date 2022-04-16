@@ -35,5 +35,7 @@ private:
 public:
     using Ptr = shared_ptr<IMU_subscriber>;
     using Vector3d = Eigen::Matrix<double, 3, 1>;
+    queue<pair<double, Vector3d>> acc_buf;
+    queue<pair<double, Vector3d>> gyr_buf;
     IMU_subscriber(ros::NodeHandle& nh, std::string topic_name, size_t buff_size);
 };

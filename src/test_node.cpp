@@ -1,6 +1,8 @@
 #include "parameters/src/parameters.h"
 #include "odometry/inc/publisher.h"
 #include "odometry/inc/feature_tracker.h"
+#include "odometry/inc/pre_integrated.h"
+#include "odometry/inc/estimator.h"
 #include <opencv2/opencv.hpp>
 #include <cv_bridge/cv_bridge.h>
 #include <mutex>
@@ -75,16 +77,12 @@ void sync_process(ImageSubscriber::Ptr &imageSubscriber_Ptr,
             }
         }
         m_buf.unlock();
-        //ROS_INFO("%d  %d", imageSubscriber_Ptr->img0_buf.size(), imageSubscriber_Ptr->img1_buf.size());
         if(!image0.empty() || !image1.empty())
             featureTracker_Ptr->featureFrame = featureTracker_Ptr->trackImage(time, image0, image1);
-        // cv::imshow("特征点提取", featureTracker_Ptr->imTrack);
-        // cv::waitKey(1);
-
         // 把特征点图片发布出去，用于可视化
         featurePub_Ptr->publish(featureTracker_Ptr->imTrack, time);
         
-        // 把特征点存到特征缓冲队列里面，供后面使用IMU融合
+        // 把特征点存到特征缓冲队列里面，供后面使用IMU融合，隔两帧采样一次，低频采样
         if(featureTracker_Ptr->inputImageCnt % 2 == 0)
         {
             m_buf.lock();
@@ -94,6 +92,61 @@ void sync_process(ImageSubscriber::Ptr &imageSubscriber_Ptr,
         std::chrono::milliseconds dura(2);
         std::this_thread::sleep_for(dura);
     }
+}
+
+void processMeasurements(FeatureTracker::Ptr &featureTracker_Ptr,
+                            ImageSubscriber::Ptr &IMU_sub_Ptr,
+                            PreIntegrated::Ptr &preIntegrated_Ptr,
+                            Estimator::Ptr &estimator_Ptr)
+{
+    while (1)
+    {
+        pair<double, FeatureMap> feature;
+        vector<pair<double, Eigen::Vector3d>> accVector, gyrVector;
+
+        if(!featureTracker_Ptr->featureBuf.empty())
+        {
+            feature = featureTracker_Ptr->featureBuf.front();
+            preIntegrated_Ptr->curTime = feature.first + estimator_Ptr->td;
+            while (1)
+            {   
+                // 检查IMU 队列是否准备好
+                if (preIntegrated_Ptr->IMUAvailable(preIntegrated_Ptr->curTime))
+                    break;
+                else
+                {
+                    printf("wait for imu ... \n");
+                    std::chrono::milliseconds dura(5);
+                    std::this_thread::sleep_for(dura);
+                }
+            }
+            m_buf.lock();
+            // 获取要预积分的数组
+            preIntegrated_Ptr->getIMUInterVal(preIntegrated_Ptr->prevTime, preIntegrated_Ptr->curTime, accVector, gyrVector);
+            featureTracker_Ptr->featureBuf.pop();
+
+            m_buf.unlock();
+
+            if(!estimator_Ptr->initFirstPoseFlag)
+            {   // 初始化世界坐标系原点
+                estimator_Ptr->initFirstIMUPose(accVector);
+                estimator_Ptr->initFirstPoseFlag = true;
+            }
+            else
+            {   
+                int frameCount = estimator_Ptr->frameCount;
+                preIntegrated_Ptr->IMU_prevIntegrated(frameCount, accVector, gyrVector);
+            }
+        }
+        m_buf.lock();
+
+        // 处理特征点
+        
+
+        std::chrono::milliseconds dura(2);
+        std::this_thread::sleep_for(dura);
+    }
+    
 }
 
 int main(int argc, char * argv[])
@@ -107,19 +160,26 @@ int main(int argc, char * argv[])
     Parameters::Ptr parameters_ptr = make_shared<Parameters>();
     parameters_ptr->readParameters(configFilePath);
     
-    // 注册特征发布ROS 线程
-    FeaureTrackerPublisher::Ptr featureTrackerPub_ptr = make_shared<FeaureTrackerPublisher>(nh, "image_track", 1000);
-    // 注册图像订阅ROS 线程
-    ImageSubscriber::Ptr imageSubscriber_ptr = make_shared<ImageSubscriber>(nh, parameters_ptr->IMAGE0_TOPIC, 
-                                                                                    parameters_ptr->IMAGE1_TOPIC, 100);
-    IMU_subscriber::Ptr ImuSub_Ptr = make_shared<IMU_subscriber>(nh, parameters_ptr->IMU_TOPIC, 2000);
     // 图像特征提取类
     FeatureTracker::Ptr featureTracker_ptr = make_shared<FeatureTracker>(parameters_ptr);
 
-    // 位姿估计线程
+    // 注册特征发布ROS 线程
+    FeaureTrackerPublisher::Ptr featureTrackerPub_ptr = make_shared<FeaureTrackerPublisher>(nh, "image_track", 1000);
+    
+    // 注册图像订阅ROS 线程
+    ImageSubscriber::Ptr imageSubscriber_ptr = make_shared<ImageSubscriber>(nh, parameters_ptr->IMAGE0_TOPIC, 
+                                                                                    parameters_ptr->IMAGE1_TOPIC, 100);
+    // 注册IMU订阅ROS 线程
+    IMU_subscriber::Ptr ImuSub_Ptr = make_shared<IMU_subscriber>(nh, parameters_ptr->IMU_TOPIC, 2000);
+    
+    // 特征提取线程
     std::thread featureTrackThread(sync_process, ref(imageSubscriber_ptr),
                                                  ref(featureTracker_ptr),
                                                  ref(featureTrackerPub_ptr));
+
+    // 处理测量值线程
+    std::thread processThread();
+
     ros::spin();
     
     int count = 0;

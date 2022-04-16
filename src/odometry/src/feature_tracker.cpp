@@ -8,7 +8,8 @@
 #include <map>
 using namespace std;
 
-FeatureTracker::FeatureTracker(Parameters::Ptr Ptr):parameters(Ptr){
+FeatureTracker::FeatureTracker(Parameters::Ptr Ptr):parameters(Ptr)
+{
     IntrinsicParameter();   // 传入Paramenters指针，初始化相机内参
 }
 

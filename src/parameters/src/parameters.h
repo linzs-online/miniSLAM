@@ -5,6 +5,16 @@
 #include <vector>
 #include <memory>
 
+using Vector3d = Eigen::Matrix<double, 3, 1>;
+using Vector2d = Eigen::Matrix<double, 2, 1>;
+using Matrix3d = Eigen::Matrix<double, 3, 3>;
+using Quaterniond = Eigen::Quaternion<double>;
+using MatrixXd = Eigen::Matrix<double, -1, -1>;
+
+
+const int windowSize = 10;
+const double FOCAL_LENGTH = 460.0;
+Eigen::Vector3d G{0.0, 0.0, 9.8};
 class Parameters
 {
 private:
