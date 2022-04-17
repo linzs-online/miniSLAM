@@ -11,7 +11,8 @@ using Matrix3d = Eigen::Matrix<double, 3, 3>;
 using Quaterniond = Eigen::Quaternion<double>;
 using MatrixXd = Eigen::Matrix<double, -1, -1>;
 
-
+vector<Eigen::Matrix3d> RIC;
+vector<Eigen::Vector3d> TIC;
 const int windowSize = 10;
 const double FOCAL_LENGTH = 460.0;
 Eigen::Vector3d G{0.0, 0.0, 9.8};

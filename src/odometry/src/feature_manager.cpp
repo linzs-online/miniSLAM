@@ -11,10 +11,11 @@ FeatureManager::FeatureManager(Matrix3d _Rs[], Parameters::Ptr _paramPtr):Rs(_Rs
 int FeatureManager::getFeatureCount()
 {
     int cnt = 0;
-    for (auto &it : feature)
+    for (auto &it : featureList)
     {   
         it.used_num = it.feature_per_frame.size();
-        if (it.used_num >= 4)
+        // 如果这个特征点在两帧上被观测到了，并且第一次观测到的帧数不是最后，说明这个特征点有效
+        if (it.used_num >= 4 && it.start_frame < windowSize - 2)
         {
             cnt++;
         }
@@ -24,54 +25,59 @@ int FeatureManager::getFeatureCount()
 
 bool FeatureManager::addFeatureCheckParallax(int frameCount, const FeatureMap &featureMap, double td)
 {
-    ROS_DEBUG("input feature: %d", (int)featureMap.size());
-    ROS_DEBUG("num of feature: %d", getFeatureCount());
+    ROS_DEBUG("input feature: %d", (int)featureMap.size());  // 该帧特征点的数量
+    ROS_DEBUG("num of feature: %d", getFeatureCount());      // 该帧中有效的特征点个数
 
-    double parallax_sum = 0;
-    int parallax_num = 0;
+    double parallax_sum = 0;    // 所有特征点的视差总和
+    int parallax_num = 0;   
     last_track_num = 0;
     new_feature_num = 0;
     long_track_num = 0;
 
+    // 1. 把所有特征点放入到 featureList中
     for(auto &id_pts : featureMap)
     {   // 特征点在每帧中的信息，归一化平面坐标、像素坐标、归一化平面上的速度
         FeaturePerFrame f_per_fra(id_pts.second[0].second, td);
-        // 输入右目的信息
+        // 赋值入右目的信息
         f_per_fra.rightObservation(id_pts.second[1].second);
 
         int feature_id = id_pts.first;
         // 自定义查找函数，返回在feature中的迭代器
-        auto it = find_if(feature.begin(), feature.end(), 
+        auto it = find_if(featureList.begin(), featureList.end(), 
                             [feature_id](const FeaturePerId &it){
                                 return it.feature_id == feature_id;
                             });
-        // 找不到，说明这个点还没记录在 feature 里面，现在把它添加进去
-        if (it == feature.end())
+        // 找不到，说明这个点还没记录在 feature 里面，现在把它添加进去，并统计数目
+        if (it == featureList.end())
         {
-            feature.push_back(FeaturePerId(feature_id, frameCount));
-            feature.back().feature_per_frame.push_back(f_per_fra);
+            featureList.push_back(FeaturePerId(feature_id, frameCount));
+            featureList.back().feature_per_frame.push_back(f_per_fra);
             new_feature_num++;
         }
         else if (it->feature_id == feature_id)
         {   // 记录追踪到的特征点在各帧中的特征信息
             it->feature_per_frame.push_back(f_per_fra);
-            last_track_num++;
+            last_track_num++;     // 此帧有多少相同的特征点被跟踪
             if( it-> feature_per_frame.size() >= 4)
                 long_track_num++;   // 追踪次数超过四次，说明该点长时间成功追踪
         }
     }
+    // 2. 追踪次数小于20次或者窗口里面关键帧的数量很少，那么说明这个也是关键帧
     if (frameCount < 2 || last_track_num < 20 || long_track_num < 40 || new_feature_num > 0.5 * last_track_num)
         return true; // 说明当前帧是新的关键帧，直接返回
 
-    for (auto &it_per_id : feature)
+    // 3. 计算每个特征在次新帧中和次次新帧中的视差
+    for (auto &it_per_id : featureList)
     {
         if (it_per_id.start_frame <= frameCount - 2 &&
             it_per_id.start_frame + int(it_per_id.feature_per_frame.size()) - 1 >= frameCount - 1)
         {
+            // 总视差：该特征点在两帧归一化平面上坐标点的距离
             parallax_sum += compensatedParallax2(it_per_id, frameCount);
             parallax_num++;
         }
     }
+    // 第一次加进去的，是关键帧
     if (parallax_num == 0)
     {
         return true;
@@ -104,4 +110,26 @@ double FeatureManager::compensatedParallax2(const FeaturePerId &it_per_id, int f
 
     ans = max(ans, sqrt(du * du + dv * dv));
     return ans;
+}
+
+// 获得指定两帧的特征点3D坐标
+vector<pair<Vector3d, Vector3d>> FeatureManager::getCorresponding(int frame_count_l, int frame_count_r)
+{
+    vector<pair<Vector3d, Vector3d>> corres;
+    for (auto &it : featureList)
+    {
+        if (it.start_frame <= frame_count_l && it.endFrame() >= frame_count_r)
+        {
+            Vector3d a = Vector3d::Zero(), b = Vector3d::Zero();
+            int idx_l = frame_count_l - it.start_frame;
+            int idx_r = frame_count_r - it.start_frame;
+
+            a = it.feature_per_frame[idx_l].point;
+
+            b = it.feature_per_frame[idx_r].point;
+            
+            corres.push_back(make_pair(a, b));
+        }
+    }
+    return corres;
 }

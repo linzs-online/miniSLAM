@@ -2,7 +2,7 @@
 #include "../../parameters/src/parameters.h"
 #include "../inc/feature_tracker.h"
 
-
+// 存储每帧中的特征点信息
 class FeaturePerFrame
 {
   public:
@@ -36,7 +36,7 @@ class FeaturePerFrame
     Vector2d velocity, velocityRight;
 };
 
-// 记录同一个特征点在不同帧的信息
+// 根据特征点ID存储每个特征点的信息，包括跟踪到它的每帧特征点图
 class FeaturePerId
 {
   public:
@@ -56,6 +56,8 @@ class FeaturePerId
     int endFrame();
 };
 
+
+
 class FeatureManager
 {
 private:
@@ -64,7 +66,7 @@ private:
 
 public:
     Parameters::Ptr paramPtr;
-    list<FeaturePerId> feature;
+    list<FeaturePerId> featureList;
     int last_track_num;
     double last_average_parallax;
     int new_feature_num;
@@ -75,6 +77,9 @@ public:
     bool addFeatureCheckParallax(int frameCount, const FeatureMap &featureMap, double td);
     int getFeatureCount();
     double compensatedParallax2(const FeaturePerId &it_per_id, int frame_count);
+
+    // 获得两张图片的角点
+    vector<pair<Vector3d, Vector3d>> getCorresponding(int frame_count_l, int frame_count_r);
     ~FeatureManager();
 };
 
