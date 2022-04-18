@@ -112,14 +112,15 @@ double FeatureManager::compensatedParallax2(const FeaturePerId &it_per_id, int f
     return ans;
 }
 
-// 获得指定两帧的特征点3D坐标
+// 获得指定两帧的共视特征点3D坐标
 vector<pair<Vector3d, Vector3d>> FeatureManager::getCorresponding(int frame_count_l, int frame_count_r)
 {
     vector<pair<Vector3d, Vector3d>> corres;
+    // 遍历所有特征点
     for (auto &it : featureList)
-    {
+    {   // 1. 首先保证跟踪到这个特征点的起始帧和最后一帧在我们指定的两帧范围之内
         if (it.start_frame <= frame_count_l && it.endFrame() >= frame_count_r)
-        {
+        {   // 2. 获得给定两帧对当前特征点的3D坐标
             Vector3d a = Vector3d::Zero(), b = Vector3d::Zero();
             int idx_l = frame_count_l - it.start_frame;
             int idx_r = frame_count_r - it.start_frame;
@@ -133,3 +134,4 @@ vector<pair<Vector3d, Vector3d>> FeatureManager::getCorresponding(int frame_coun
     }
     return corres;
 }
+
