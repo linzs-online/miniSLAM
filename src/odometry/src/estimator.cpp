@@ -9,6 +9,7 @@ Estimator::Estimator(Parameters::Ptr &_parametersPtr):td(_parametersPtr->TD)
     paramPtr = _parametersPtr;
 }
 
+// 获得 初始帧 相对于 世界坐标系 下的变换矩阵 R0
 void Estimator::initFirstIMUPose(vector<pair<double, Eigen::Vector3d>> &accVector)
 {
     printf("init first imu pose\n");
@@ -137,7 +138,7 @@ bool Estimator::initialStructure()
     map<int, Vector3d> sfm_tracked_points;  // 用于存储SfM重建出的特征点的坐标
     vector<SFMFeature> sfm_f;   // 三角化状态、特征点ID、共视观测帧与像素坐标、3D坐标、深度
 
-    // 将现有在f_manager中的所有feature,转存到SfMFeature对象中
+    // 将现有在f_manager中的所有feature,转存到 SfMFeature 对象中
     for (auto &it_per_id : f_manager.featureList)
     {
         SFMFeature tmp_feature; // 初始化一个SfMFeature对象
@@ -164,11 +165,11 @@ bool Estimator::initialStructure()
         return false;
     }
     
-    // 对窗口里面每个图像帧求解SfM问题
+    // 对窗口里面 每个图像 帧求解SfM问题
     // 获得所有图像帧相对于参考帧l的位姿和坐标点sfm_tracked_points
     GlobalSFM sfm;
-    if(!sfm.construct(frameCount + 1, Q, T, l,
-              relative_R, relative_T,
+    if(!sfm.construct(frameCount + 1, Q, T, 
+                l, relative_R, relative_T, // 参考帧的信息
               sfm_f, sfm_tracked_points))
     {
         // 求解失败，则边缘化最早的一帧，并滑动窗口
@@ -177,11 +178,76 @@ bool Estimator::initialStructure()
         return false;
     }
     // 至此，第一部分纯视觉SFM结束，这里的Q 和 T 存储的是窗口里面每一帧相对于第 l 帧（参考帧）的相对位姿
+
+
     // 但是此时图像帧的数目可能会超过滑动窗口的大小，所以还需要对那些不被包含在滑动窗口里面图像帧进行位姿求解
     map<double, ImageFrame>::iterator frame_it;
     map<int, Vector3d>::iterator it;
     frame_it = all_image_frame.begin();
-    
+    for (int i = 0; frame_it != all_image_frame.end( ); frame_it++)
+    {
+        cv::Mat r, rvec, t, D, tmp_r;
+        // 对于在窗口里面的不需要继续求解了，直接用上面 sfm 的结果
+        if((frame_it->first) == Headers[i])
+        {
+            frame_it->second.is_key_frame = true;
+            frame_it->second.R = Q[i].toRotationMatrix() * RIC[0].transpose();
+            frame_it->second.T = T[i];
+            i++;
+            continue;
+        }
+        if((frame_it->first) > Headers[i])
+        {
+            i++;
+        }
+        Matrix3d R_inital = (Q[i].inverse()).toRotationMatrix();
+        Vector3d P_inital = - R_inital * T[i];
+        cv::eigen2cv(R_inital, tmp_r);  // eigen 转 cv::Mat
+        cv::Rodrigues(tmp_r, rvec); // 罗德里格斯公式将旋转矩阵转换成旋转向量
+        cv::eigen2cv(P_inital, t);
+        frame_it->second.is_key_frame = false;
+        vector<cv::Point3f> pts_3_vector;
+        vector<cv::Point2f> pts_2_vector;
+        for (auto &id_pts : frame_it->second.featurePoints)
+        {
+            int feature_id = id_pts.first;
+            for (auto &i_p : id_pts.second)
+            {   
+                it = sfm_tracked_points.find(feature_id);   // 首先找到已经通过 sfm 恢复出运动的点
+                if(it != sfm_tracked_points.end())
+                {
+                    Vector3d world_pts = it->second;
+                    cv::Point3f pts_3(world_pts(0), world_pts(1), world_pts(2));  // 赋值 3D点
+                    pts_3_vector.push_back(pts_3);
+                    Vector2d img_pts = i_p.second.head<2>();
+                    cv::Point2f pts_2(img_pts(0), img_pts(1));   // 赋值 2D点
+                    pts_2_vector.push_back(pts_2);
+                }
+            }
+        }
+        cv::Mat K = (cv::Mat_<double>(3, 3) << 1, 0, 0, 0, 1, 0, 0, 0, 1);     
+        if(pts_3_vector.size() < 6) // 起码要 5 个点才能 PnP
+        {
+            cout << "pts_3_vector size " << pts_3_vector.size() << endl;
+            ROS_DEBUG("Not enough points for solve pnp !");
+            return false;
+        }
+        if (! cv::solvePnP(pts_3_vector, pts_2_vector, K, D, rvec, t, 1))   // 3D-2D : PnP 
+        {
+            ROS_DEBUG("solve pnp fail!");
+            return false;
+        }
+        cv::Rodrigues(rvec, r);     // 罗德里格斯公式 转回 旋转矩阵，注意，这个函数支持双向转换，只要数据类型对得上就行
+        MatrixXd R_pnp,tmp_R_pnp;
+        cv::cv2eigen(r, tmp_R_pnp);
+        R_pnp = tmp_R_pnp.transpose();
+        MatrixXd T_pnp;
+        cv::cv2eigen(t, T_pnp);
+        T_pnp = R_pnp * (-T_pnp);
+        frame_it->second.R = R_pnp * RIC[0].transpose();
+        frame_it->second.T = T_pnp;
+    }  
+
 }
 
 // 获得滑动窗口中第一个与它最近的一帧满足视差的帧，为l帧，以及对应的R 和 T，说明可以进行三角化

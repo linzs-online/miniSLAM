@@ -12,7 +12,7 @@ using namespace Eigen;
 using namespace std;
 
 
-
+// 每个特征点都有一个 SFMFeature
 struct SFMFeature
 {
     bool state; // 特征点状态
