@@ -237,7 +237,7 @@ bool Estimator::initialStructure()
             ROS_DEBUG("solve pnp fail!");
             return false;
         }
-        cv::Rodrigues(rvec, r);     // 罗德里格斯公式 转回 旋转矩阵，注意，这个函数支持双向转换，只要数据类型对得上就行
+        cv::Rodrigues(rvec, r);     // 罗德里格斯公式 旋转向量 转回 旋转矩阵，注意，这个函数支持双向转换，只要数据类型对得上就行
         MatrixXd R_pnp,tmp_R_pnp;
         cv::cv2eigen(r, tmp_R_pnp);
         R_pnp = tmp_R_pnp.transpose();
@@ -247,7 +247,14 @@ bool Estimator::initialStructure()
         frame_it->second.R = R_pnp * RIC[0].transpose();
         frame_it->second.T = T_pnp;
     }  
-
+    // 视觉 - IMU 对齐
+    if (visualInitialAlign())
+        return true;
+    else
+    {
+        ROS_INFO("misalign visual structure with IMU");
+        return false;
+    }
 }
 
 // 获得滑动窗口中第一个与它最近的一帧满足视差的帧，为l帧，以及对应的R 和 T，说明可以进行三角化
@@ -282,4 +289,10 @@ bool Estimator::relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l)
     }
     // 共视特征点不够，直接退出
     return false;
+}
+
+bool Estimator::visualInitialAlign()
+{
+    VectorXd x;
+    bool result = VisualIMUAlignment(all_image_frame, Bgs, g, x);
 }

@@ -60,6 +60,6 @@ public:
     void processImage(const FeatureMap &image, const double header);
     bool initialStructure();
     bool relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l);
-
+    bool visualInitialAlign();
     ~Estimator();
 };

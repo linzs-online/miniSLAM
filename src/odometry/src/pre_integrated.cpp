@@ -129,7 +129,7 @@ void IntegrationBase::midPointIntegration(double _dt,
     Vector3d un_acc_0 = delta_q * (_acc_0 - linearized_ba);
     // 求 k 时刻 到 k+1 时刻的角速度中值
     Vector3d un_gyr = 0.5 * (_gyr_0 + _gyr_1) - linearized_bg;
-    // 求q[b(i)][b(k+1)],因为微小转动量，这里做了泰勒展开，sin[(\phi)/2]  --> (\phi)/2s
+    // 求q[b(i)][b(k+1)],因为微小转动量，这里做了泰勒展开，sin[(\phi)/2]  --> (\phi)/2
     result_delta_q = delta_q * Quaterniond(1, un_gyr(0) * _dt / 2, un_gyr(1) * _dt / 2, un_gyr(2) * _dt / 2);
     // 求q[b(i)][b(k+1)]*{a[b(k+1)] - 当前帧的偏置}
     Vector3d un_acc_1 = result_delta_q * (_acc_1 - linearized_ba);
@@ -149,7 +149,7 @@ void IntegrationBase::midPointIntegration(double _dt,
         Vector3d a_1_x = _acc_1 - linearized_ba;
         Matrix3d R_w_x, R_a_0_x, R_a_1_x;
 
-        // 向量转反对称矩阵，为后面计算F矩阵做准备
+        // 向量 转换为 反对称矩阵，为后面计算F矩阵做准备
         R_w_x<<0, -w_x(2), w_x(1),
                 w_x(2), 0, -w_x(0),
                 -w_x(1), w_x(0), 0;
@@ -225,6 +225,22 @@ void IntegrationBase::propagate(double _dt, const Eigen::Vector3d &_acc_1, const
     acc_0 = acc_1;
     gyr_0 = gyr_1; 
 }
+
+void IntegrationBase::repropagate(const Eigen::Vector3d &_linearized_ba, const Eigen::Vector3d &_linearized_bg)
+    {
+        sum_dt = 0.0;
+        acc_0 = linearized_acc;
+        gyr_0 = linearized_gyr;
+        delta_p.setZero();
+        delta_q.setIdentity();
+        delta_v.setZero();
+        linearized_ba = _linearized_ba;
+        linearized_bg = _linearized_bg;
+        jacobian.setIdentity();
+        covariance.setZero();
+        for (int i = 0; i < static_cast<int>(dt_buf.size()); i++)
+            propagate(dt_buf[i], acc_buf[i], gyr_buf[i]);
+    }
 
 Eigen::Matrix<double, 15, 1> IntegrationBase::IMU_residuals(const Eigen::Vector3d &Pi, const Eigen::Quaterniond &Qi, const Eigen::Vector3d &Vi, const Eigen::Vector3d &Bai, const Eigen::Vector3d &Bgi,
                                           const Eigen::Vector3d &Pj, const Eigen::Quaterniond &Qj, const Eigen::Vector3d &Vj, const Eigen::Vector3d &Baj, const Eigen::Vector3d &Bgj)

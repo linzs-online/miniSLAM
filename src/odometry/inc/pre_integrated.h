@@ -60,6 +60,8 @@ class IntegrationBase
                     const Eigen::Vector3d &_linearized_ba, const Eigen::Vector3d &_linearized_bg);
     void push_back(double dt, const Eigen::Vector3d &acc, const Eigen::Vector3d &gyr);
     void propagate(double _dt, const Eigen::Vector3d &_acc_1, const Eigen::Vector3d &_gyr_1);
+    void repropagate(const Eigen::Vector3d &_linearized_ba, const Eigen::Vector3d &_linearized_bg);
+
     void midPointIntegration(double _dt, 
                             const Eigen::Vector3d &_acc_0, const Eigen::Vector3d &_gyr_0,
                             const Eigen::Vector3d &_acc_1, const Eigen::Vector3d &_gyr_1,
