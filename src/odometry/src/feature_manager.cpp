@@ -11,7 +11,7 @@ FeatureManager::FeatureManager(Matrix3d _Rs[], Parameters::Ptr _paramPtr):Rs(_Rs
 int FeatureManager::getFeatureCount()
 {
     int cnt = 0;
-    for (auto &it : featureList)
+    for (auto &it : featurePointList)
     {   
         it.used_num = it.feature_per_frame.size();
         // 如果这个特征点在两帧上被观测到了，并且第一次观测到的帧数不是最后，说明这个特征点有效
@@ -43,15 +43,15 @@ bool FeatureManager::addFeatureCheckParallax(int frameCount, const FeatureMap &f
 
         int feature_id = id_pts.first;
         // 自定义查找函数，返回在feature中的迭代器
-        auto it = find_if(featureList.begin(), featureList.end(), 
+        auto it = find_if(featurePointList.begin(), featurePointList.end(), 
                             [feature_id](const FeaturePerId &it){
                                 return it.feature_id == feature_id;
                             });
         // 找不到，说明这个点还没记录在 feature 里面，现在把它添加进去，并统计数目
-        if (it == featureList.end())
+        if (it == featurePointList.end())
         {
-            featureList.push_back(FeaturePerId(feature_id, frameCount));
-            featureList.back().feature_per_frame.push_back(f_per_fra);
+            featurePointList.push_back(FeaturePerId(feature_id, frameCount));
+            featurePointList.back().feature_per_frame.push_back(f_per_fra);
             new_feature_num++;
         }
         else if (it->feature_id == feature_id)
@@ -67,7 +67,7 @@ bool FeatureManager::addFeatureCheckParallax(int frameCount, const FeatureMap &f
         return true; // 说明当前帧是新的关键帧，直接返回
 
     // 3. 计算每个特征在次新帧中和次次新帧中的视差
-    for (auto &it_per_id : featureList)
+    for (auto &it_per_id : featurePointList)
     {
         if (it_per_id.start_frame <= frameCount - 2 &&
             it_per_id.start_frame + int(it_per_id.feature_per_frame.size()) - 1 >= frameCount - 1)
@@ -117,7 +117,7 @@ vector<pair<Vector3d, Vector3d>> FeatureManager::getCorresponding(int frame_coun
 {
     vector<pair<Vector3d, Vector3d>> corres;
     // 遍历所有特征点
-    for (auto &it : featureList)
+    for (auto &it : featurePointList)
     {   // 1. 首先保证跟踪到这个特征点的起始帧和最后一帧在我们指定的两帧范围之内
         if (it.start_frame <= frame_count_l && it.endFrame() >= frame_count_r)
         {   // 2. 获得给定两帧对当前特征点的3D坐标
@@ -135,3 +135,12 @@ vector<pair<Vector3d, Vector3d>> FeatureManager::getCorresponding(int frame_coun
     return corres;
 }
 
+void FeatureManager::clearDepth()
+{
+    for (auto &it_per_id : featurePointList)
+        it_per_id.estimated_depth = -1;
+}
+
+void triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vector3d tic[], Matrix3d ric[]){
+
+}

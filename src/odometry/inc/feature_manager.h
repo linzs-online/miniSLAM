@@ -66,7 +66,7 @@ private:
 
 public:
     Parameters::Ptr paramPtr;
-    list<FeaturePerId> featureList;
+    list<FeaturePerId> featurePointList;
     int last_track_num;
     double last_average_parallax;
     int new_feature_num;
@@ -77,7 +77,7 @@ public:
     bool addFeatureCheckParallax(int frameCount, const FeatureMap &featureMap, double td);
     int getFeatureCount();
     double compensatedParallax2(const FeaturePerId &it_per_id, int frame_count);
-
+    void clearDepth();
     // 获得两张图片的角点
     vector<pair<Vector3d, Vector3d>> getCorresponding(int frame_count_l, int frame_count_r);
     ~FeatureManager();

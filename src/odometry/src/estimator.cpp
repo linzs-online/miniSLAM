@@ -294,5 +294,59 @@ bool Estimator::relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l)
 bool Estimator::visualInitialAlign()
 {
     VectorXd x;
+    // 求解尺度因子 s， 优化重力矢量 g
     bool result = VisualIMUAlignment(all_image_frame, Bgs, g, x);
+    if(!result)
+    {
+        ROS_DEBUG("solve g failed!");
+        return false;
+    }
+    for (int i = 0; i <= frameCount; i++)
+    {
+        Matrix3d Ri = all_image_frame[Headers[i]].R;
+        Vector3d Pi = all_image_frame[Headers[i]].T;
+        Ps[i] = Pi;
+        Rs[i] = Ri;
+        all_image_frame[Headers[i]].is_key_frame = true;
+    }
+    double s = (x.tail<1>())(0);
+    for (int i = 0; i <= windowSize; i++)
+    {
+        pre_integrations[i]->repropagate(Vector3d::Zero(), Bgs[i]);
+    }
+    // 将所有状态量对齐到第0帧IMU坐标系
+    for (int i = frameCount; i >= 0; i--)
+        // P_wi = sP_wc - R_wi * P_ic
+        Ps[i] = s * Ps[i] - Rs[i] * TIC[0] - (s * Ps[0] - Rs[0] * TIC[0]);
+    int kv = -1;
+    map<double, ImageFrame>::iterator frame_i; 
+    for (frame_i = all_image_frame.begin(); frame_i != all_image_frame.end(); frame_i++)
+    { // 对于关键帧，将之前求出来的速度矢量乘以 R_wi 转到世界系下：
+        if(frame_i->second.is_key_frame)
+        {
+            kv++;
+            Vs[kv] = frame_i->second.R * x.segment<3>(kv * 3);
+        }
+    }
+
+    Matrix3d R0 = Utility::g2R(g);  // g 是参考帧下的重力矢量，所以 R0 就是参考帧到世界坐标系的旋转
+    double yaw = Utility::R2ypr(R0 * Rs[0]).x(); // Rs[0] 指滑窗的第0帧到参考帧的旋转
+    R0 = Utility::ypr2R(Eigen::Vector3d{-yaw, 0, 0}) * R0; // 让第0帧的航向为0
+    g = R0 * g;
+    //Matrix3d rot_diff = R0 * Rs[0].transpose();
+    Matrix3d rot_diff = R0;
+    for (int i = 0; i <= frameCount; i++)   // 将滑窗中的 PVQ 全部对齐到第 0 帧的重力方向
+    {
+        Ps[i] = rot_diff * Ps[i];
+        Rs[i] = rot_diff * Rs[i];
+        Vs[i] = rot_diff * Vs[i];
+    }
+    ROS_DEBUG_STREAM("g0     " << g.transpose());
+    ROS_DEBUG_STREAM("my R0  " << Utility::R2ypr(Rs[0]).transpose()); 
+
+    // 位姿对齐之后重新三角化路标点
+    f_manager.clearDepth();
+    f_manager.triangulate(frameCount, Ps, Rs, t_i2c, R_i2c);
+
+    return true;
 }
