@@ -8,8 +8,7 @@ PreIntegrated::PreIntegrated(Parameters::Ptr &parametersPtr, IMU_subscriber::Ptr
 }
 
 
-bool PreIntegrated::IMUAvailable(double t)
-{
+bool PreIntegrated::IMUAvailable(double t){
     if(!IMU_Ptr->acc_buf.empty() && t <= IMU_Ptr->acc_buf.back().first)
         return true;
     else
@@ -52,7 +51,7 @@ bool PreIntegrated::getIMUInterVal(double t0, double t1, vector<pair<double, Eig
 }                                
 
 
-void PreIntegrated::IMU_prevIntegrated(const int& frameCount, vector<pair<double, Eigen::Vector3d>> &accVector,
+void PreIntegrated::prevIntegrated(const int& frameCount, vector<pair<double, Eigen::Vector3d>> &accVector,
                             vector<pair<double, Eigen::Vector3d>> &gyrVector)
 {
     for(auto i = 0; i < accVector.size(); i++)

@@ -57,7 +57,7 @@ void reduceVector(vector<int> &v, vector<uchar> status)
     v.resize(j);
 }
 
-FeatureMap FeatureTracker::trackImage(double _cur_time, const cv::Mat &_img0, const cv::Mat &_img1)
+FeaturePointMap FeatureTracker::trackImage(double _cur_time, const cv::Mat &_img0, const cv::Mat &_img1)
 {
     cur_time = _cur_time;
     cur_image = _img0;
@@ -177,7 +177,7 @@ FeatureMap FeatureTracker::trackImage(double _cur_time, const cv::Mat &_img0, co
     for(size_t i = 0; i < cur_pts.size(); i++)
         prevLeftPtsMap[ids[i]] = cur_pts[i];
 
-    FeatureMap featureFrame; //FeatureMap =  map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>
+    FeaturePointMap featureFrame; //FeaturePointMap =  map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>
     // 存储左目的特征点
     for (size_t i = 0; i < ids.size(); i++)
     {

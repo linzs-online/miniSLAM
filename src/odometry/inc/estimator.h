@@ -32,22 +32,33 @@ public:
     bool initFirstPoseFlag = false;
     int solverFlag = 0;
     double initial_timestamp = 0;
-    Matrix3d R_i2c[2]; // 相机到IMU的外参矩阵
-    Vector3d t_i2c[2];
+    Matrix3d R_ic[2]; // 相机到IMU的外参矩阵
+    Vector3d t_ic[2];
+    Eigen::Vector3d initP;
+    Eigen::Matrix3d initR;
+    double prevTime, curTime;
+    bool openExEstimation;
 
     Vector3d Ps[(windowSize + 1)];
     Vector3d Vs[(windowSize + 1)];
     Matrix3d Rs[(windowSize + 1)];
     Vector3d Bas[(windowSize + 1)];
     Vector3d Bgs[(windowSize + 1)];
+
+    vector<double> dt_buf[(windowSize + 1)];
+    vector<Vector3d> linear_acceleration_buf[(windowSize + 1)];
+    vector<Vector3d> angular_velocity_buf[(windowSize + 1)];
+
     Vector3d g;
-    FeatureManager f_manager;
-    MotionEstimator m_estimator;
+    FeatureTracker featureTracker; // 提取特征的
+    FeatureManager f_manager;   // 管理特征的
+    MotionEstimator m_estimator;    // 求解参考帧的
     bool marginalization_flag;
     int frameCount;
+    int inputImageCnt;
 
     double Headers[(windowSize + 1)];
-    IntegrationBase *pre_integrations[(windowSize + 1)];
+    IntegrationBase *pre_integrations[(windowSize + 1)];    // 窗口中每帧都有一个预积分类
     IntegrationBase *tmp_pre_integration;
     map<double, ImageFrame> all_image_frame;
     Vector3d acc_0, gyr_0;
@@ -57,7 +68,7 @@ public:
     Estimator(Parameters::Ptr &parametersPtr);
     // 获得初始位姿相对于世界坐标原点的旋转矩阵
     void initFirstIMUPose(std::vector<std::pair<double, Eigen::Vector3d>> &accVector);
-    void processImage(const FeatureMap &image, const double header);
+    void poseEstimation(pair<double, FeaturePointMap> &t_featurePointMap);
     bool initialStructure();
     bool relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l);
     bool visualInitialAlign();

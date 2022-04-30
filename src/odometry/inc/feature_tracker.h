@@ -7,8 +7,8 @@
 #include "../../camera_models/include/camodocal/camera_models/PinholeCamera.h"
 
 using namespace std;
-                    // feature ID        Camare ID        feature:      
-using FeatureMap =  map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>;
+                         // feature ID        Camare ID        feature:      
+using FeaturePointMap =  map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>;
 
 class FeatureTracker
 {
@@ -32,14 +32,16 @@ public:
     map<int, cv::Point2f> cur_un_right_pts_map, prev_un_right_pts_map;
     cv::Mat imTrack;
     int inputImageCnt = 0;
-    FeatureMap featureFrame;
-    queue<pair<double, FeatureMap>> featureBuf;
+    FeaturePointMap featurePointMap;
+    
+    // 这个特征类就是为了构建这个特征点队列
+    queue<pair<double, FeaturePointMap>> featureBuf;
 
     FeatureTracker(Parameters::Ptr Ptr);
     FeatureTracker() = delete;
     ~FeatureTracker();
     void IntrinsicParameter();
-    FeatureMap trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1);
+    FeaturePointMap trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1);
     double distance(cv::Point2f &pt1, cv::Point2f &pt2);
     bool inBorder(const cv::Point2f &pt);
     void setMask();

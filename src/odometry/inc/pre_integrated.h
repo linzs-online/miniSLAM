@@ -9,7 +9,6 @@
 class PreIntegrated{
 private:
 
-
 public:
     using Ptr = shared_ptr<PreIntegrated>;
     Parameters::Ptr ParametersPtr;
@@ -24,7 +23,7 @@ public:
     bool IMUAvailable(double t);
     bool getIMUInterVal(double t0, double t1, vector<pair<double, Eigen::Vector3d>> &accBuf, 
                                 vector<pair<double, Eigen::Vector3d>> &gyrBuf);
-    void IMU_prevIntegrated(const int& frameCount, vector<pair<double, Eigen::Vector3d>> &accVector,
+    void prevIntegrated(const int& frameCount, vector<pair<double, Eigen::Vector3d>> &accVector,
                             vector<pair<double, Eigen::Vector3d>> &gyrVector);
     
     ~PreIntegrated() = default;

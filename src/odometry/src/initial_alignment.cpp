@@ -1,5 +1,11 @@
 #include "../inc/initial_alignment.h"
 
+/**
+ * @brief 用SfM的结果 和 粗糙的预积分结果 求解陀螺仪偏置，求解完成之后重新进行一次预积分
+ * 
+ * @param all_image_frame 
+ * @param Bgs 
+ */
 void solveGyroscopeBias(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs)
 {
     Matrix3d A;

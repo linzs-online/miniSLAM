@@ -2,16 +2,68 @@
 
 
 using namespace std;
-
-
-Estimator::Estimator(Parameters::Ptr &_parametersPtr):td(_parametersPtr->TD)
+std::mutex m_process;
+/**
+ * @brief Construct a new Estimator:: Estimator object
+ * 
+ * @param _parametersPtr 
+ */
+Estimator::Estimator(Parameters::Ptr &_parametersPtr):td(_parametersPtr->TD), f_manager{Rs,_parametersPtr}
 {
+    ROS_INFO("init begins");
     paramPtr = _parametersPtr;
+
+    m_process.lock();
+
+    prevTime = -1;
+    curTime = 0;
+    openExEstimation = 0;
+
+    // 初始位姿
+    initP = Eigen::Vector3d(0, 0, 0);
+    initR = Eigen::Matrix3d::Identity();
+
+    for (int i = 0; i < windowSize + 1; i++)
+    {
+        Rs[i].setIdentity();
+        Ps[i].setZero();
+        Vs[i].setZero();
+        Bas[i].setZero();
+        Bgs[i].setZero();
+
+        dt_buf[i].clear();
+        linear_acceleration_buf[i].clear();
+        angular_velocity_buf[i].clear();
+
+        if (pre_integrations[i] != nullptr)
+        {
+            delete pre_integrations[i];
+        }
+        pre_integrations[i] = nullptr;
+    }
+
+    // 根据Parameter类的数据初始化两个相机的外参
+    for (int i = 0; i < 2; i++){
+        t_ic[i] = paramPtr->TIC[i];
+        R_ic[i] = paramPtr->RIC[i];
+        cout << " exitrinsic cam " << i << endl  << t_ic[i] << endl << R_ic[i].transpose() << endl;
+    }
+    // 初始化特征管理类的 R_ic
+    for (int i = 0; i < 2; i++){
+        f_manager.R_ic[i] = R_ic[i];
+    }
+    td = paramPtr->TD;
+    g = paramPtr->G;
+
+    m_process.unlock();
 }
 
-// 获得 初始帧 相对于 世界坐标系 下的变换矩阵 R0
-void Estimator::initFirstIMUPose(vector<pair<double, Eigen::Vector3d>> &accVector)
-{
+/**
+ * @brief 获得 初始帧 相对于 世界坐标系 下的变换矩阵 Rs[0]
+ * 
+ * @param accVector 
+ */
+void Estimator::initFirstIMUPose(vector<pair<double, Eigen::Vector3d>> &accVector){
     printf("init first imu pose\n");
     Eigen::Vector3d averAcc(0, 0, 0);
     int n = (int)accVector.size();
@@ -29,83 +81,102 @@ void Estimator::initFirstIMUPose(vector<pair<double, Eigen::Vector3d>> &accVecto
     //Vs[0] = Vector3d(5, 0, 0);
 }
 
-void Estimator::processImage(const FeatureMap &featureMap, const double header)
-{
+
+
+/**
+ * @brief 主要业务
+ * 
+ * @param _featurePointMap 
+ * @param header 
+ */
+void Estimator::poseEstimation(pair<double, FeaturePointMap> &t_featurePointMap){
     ROS_DEBUG("new image coming ------------------------------------------");
-    ROS_DEBUG("Adding feature points %lu", featureMap.size());
+    ROS_DEBUG("header = %lu", t_featurePointMap.first);     // 当前帧的时间
+    ROS_DEBUG("Adding feature points %lu", t_featurePointMap.second.size()); // 当前帧的特征点的数量
+    
     // 检查两张图的视差，判断是否为关键帧，后面进行边缘化操作
-    if (f_manager.addFeatureCheckParallax(frameCount, featureMap, td))
-    {
+    if (f_manager.addFeatureCheckParallax(frameCount, t_featurePointMap.second, td)){
         marginalization_flag = 0;
         //printf("keyframe\n");
     }
-    else
-    {
+    else{
         marginalization_flag = 1;
         //printf("non-keyframe\n");
     }
     ROS_DEBUG("%s", marginalization_flag ? "Non-keyframe" : "Keyframe");
     ROS_DEBUG("Solving the %d frame", frameCount);
     ROS_DEBUG("number of feature: %d", f_manager.getFeatureCount());
-    Headers[frameCount] = header;
+    Headers[frameCount] = t_featurePointMap.first;
 
+    tmp_pre_integration = new IntegrationBase{acc_0, gyr_0, Bas[frameCount], Bgs[frameCount]};
     // 填充imageframe的容器以及更新临时预积分初始值
-    ImageFrame imageframe(featureMap, header);
+    ImageFrame imageframe(_featurePointMap, header);
     imageframe.pre_integration = tmp_pre_integration;
     all_image_frame.insert(make_pair(header, imageframe));
-    tmp_pre_integration = new IntegrationBase{acc_0, gyr_0, Bas[frameCount], Bgs[frameCount]};
-
+    
     // 是否估计外参
-    if (paramPtr->ESTIMATE_EXTRINSIC == 2)
-    {
+    if (paramPtr->ESTIMATE_EXTRINSIC == 2){
         cout << "calibrating extrinsic param, rotation movement is needed" << endl;
-        if (frameCount != 0)
-        {
+        if (frameCount != 0){
             vector<pair<Vector3d, Vector3d>> corres = f_manager.getCorresponding(frameCount - 1, frameCount);
             Matrix3d calib_ric;
-            if (initial_ex_rotation.CalibrationExRotation(corres, pre_integrations[frameCount]->delta_q, calib_ric))
-            {
-                // ROS_WARN("initial extrinsic rotation calib success");
-                // ROS_WARN_STREAM("initial extrinsic rotation: " << endl
-                                                            //    << calib_ric);
-                R_i2c[0] = calib_ric;
+            if (initial_ex_rotation.CalibrationExRotation(corres, pre_integrations[frameCount]->delta_q, calib_ric)){
+                R_ic[0] = calib_ric;
                 RIC[0] = calib_ric;
                 paramPtr->ESTIMATE_EXTRINSIC = 1; // 先进行了一次外参动态标定，之后在后端优化中还会优化该值
             }
         }
     }
-
-    
-    if (solverFlag == 0) // 初始化模式
-    {
+    // stereo + IMU initilization
+    if (solverFlag == 0){   
+        f_manager.initFramePoseByPnP(frameCount, Ps, Rs, t_ic, R_ic);
+        f_manager.triangulate(frameCount, Ps, Rs, t_ic, R_ic);
         // 确保有足够的Frame参与初始化
-        if (frameCount == windowSize)
-        {
-            bool result = false;
-            if (paramPtr->ESTIMATE_EXTRINSIC != 2 && (header - initial_timestamp) > 0.1)
-            {
-                // cout << "1 initialStructure" << endl;
-                // 视觉惯导联合初始化
-                result = initialStructure();
-                initial_timestamp = header;
-            }
-            if (result)
-            {
-                //初始化成功，先进行一次滑动窗口非线性优化，得到当前帧与第一帧的位姿
-                solverFlag = 1;
-
-            }
+        if (frameCount == windowSize){
+            map<double, ImageFrame>::iterator frame_it;
+                int i = 0;
+                for (frame_it = all_image_frame.begin(); frame_it != all_image_frame.end(); frame_it++){
+                    frame_it->second.R = Rs[i];
+                    frame_it->second.T = Ps[i];
+                    i++;
+                }
+                solveGyroscopeBias(all_image_frame, Bgs);
+                for (int i = 0; i <= windowSize; i++){
+                    pre_integrations[i]->repropagate(Vector3d::Zero(), Bgs[i]);
+                }
+                optimization();
+                updateLatestStates();
+                solver_flag = 1;   // 初始化完成
+                slideWindow();
+                ROS_INFO("Initialization finish!");
         }
         else
             frameCount++;
+    
+
+        if(frameCount < windowSize)
+        {
+            frameCount++;
+            int prev_frame = frameCount - 1;
+            Ps[frameCount] = Ps[prev_frame];
+            Vs[frameCount] = Vs[prev_frame];
+            Rs[frameCount] = Rs[prev_frame];
+            Bas[frameCount] = Bas[prev_frame];
+            Bgs[frameCount] = Bgs[prev_frame];
+        }
     }
+    else{
+        f_manager.triangulate(frameCount, Ps, Rs, t_ic, R_ic);
+
+    }
+
+    
 }
 
-// 先对纯视觉SFM初始化相机位姿，再和IMU对齐
+// 【单目初始化】先对纯视觉SFM初始化相机位姿，再和IMU对齐
 // 1. 纯视觉SFM估计滑动窗内相机位姿和路标点逆深度
 // 2. 视觉惯性联合校准，SFM与IMU积分对齐
-bool Estimator::initialStructure()
-{
+bool Estimator::initialStructure(){
     map<double, ImageFrame>::iterator frame_it;
     Vector3d sum_g;
     for (frame_it = all_image_frame.begin(), frame_it++; frame_it != all_image_frame.end(); frame_it++)
@@ -139,15 +210,13 @@ bool Estimator::initialStructure()
     vector<SFMFeature> sfm_f;   // 三角化状态、特征点ID、共视观测帧与像素坐标、3D坐标、深度
 
     // 将现有在f_manager中的所有feature,转存到 SfMFeature 对象中
-    for (auto &it_per_id : f_manager.featureList)
-    {
+    for (auto &featurePoint : f_manager.featurePointList){
         SFMFeature tmp_feature; // 初始化一个SfMFeature对象
         tmp_feature.state = false;  // 所有的特征点都还没进行三角化
-        tmp_feature.id = it_per_id.feature_id; // 特征点的ID
-        int commonViewID  = it_per_id.start_frame;
-        for (auto &it_per_frame : it_per_id.feature_per_frame)
-        {
-            Vector3d temp_2Dpts = it_per_frame.point;
+        tmp_feature.id = featurePoint.feature_id; // 特征点的ID
+        int commonViewID  = featurePoint.start_frame;
+        for (auto &it_per_frame : featurePoint.feature_per_frame){
+            Vector3d temp_2Dpts = it_per_frame.normPoint;
             tmp_feature.observation.push_back(make_pair(commonViewID++, Eigen::Vector2d{temp_2Dpts.x(), temp_2Dpts.y()}));
         }
         // 存入到sfm_f容器中，之后做纯视觉估计
@@ -257,7 +326,15 @@ bool Estimator::initialStructure()
     }
 }
 
-// 获得滑动窗口中第一个与它最近的一帧满足视差的帧，为l帧，以及对应的R 和 T，说明可以进行三角化
+/**
+ * @brief 获得滑动窗口中与最后一帧满足视差的参考帧，并求得参考帧到最后一帧的变换
+ * 
+ * @param relative_R 
+ * @param relative_T 
+ * @param l     //用于获取参考帧Index
+ * @return true 
+ * @return false 
+ */
 bool Estimator::relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l)
 {
     // find previous frame which contians enough correspondance and parallex with newest frame
@@ -291,8 +368,14 @@ bool Estimator::relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l)
     return false;
 }
 
-bool Estimator::visualInitialAlign()
-{
+
+/**
+ * @brief 求解尺度因子，优化重力矢量，所有状态变量对齐到世界坐标系
+ * 
+ * @return true 
+ * @return false 
+ */
+bool Estimator::visualInitialAlign(){
     VectorXd x;
     // 求解尺度因子 s， 优化重力矢量 g
     bool result = VisualIMUAlignment(all_image_frame, Bgs, g, x);
@@ -346,7 +429,7 @@ bool Estimator::visualInitialAlign()
 
     // 位姿对齐之后重新三角化路标点
     f_manager.clearDepth();
-    f_manager.triangulate(frameCount, Ps, Rs, t_i2c, R_i2c);
+    f_manager.triangulate(frameCount, Ps, Rs, t_ic, R_ic);
 
     return true;
 }

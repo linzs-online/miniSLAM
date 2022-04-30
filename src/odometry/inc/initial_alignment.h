@@ -15,15 +15,13 @@ class ImageFrame
 {
     public:
         ImageFrame(){};
-        ImageFrame(const FeatureMap& _featurePoints, double _t):t{_t},is_key_frame{false}
-        {
-            featurePoints = _featurePoints;
-        };
-        FeatureMap featurePoints;
+        ImageFrame(const FeaturePointMap& _featurePoints, double _t):
+            t{_t},is_key_frame{false},featurePoints(_featurePoints){};
+        FeaturePointMap featurePoints;
         double t;
         Matrix3d R;
         Vector3d T;
-        IntegrationBase *pre_integration;
+        IntegrationBase* pre_integration;
         bool is_key_frame;
 };
 void solveGyroscopeBias(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs);
