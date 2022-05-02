@@ -33,12 +33,12 @@ public:
     cv::Mat imTrack;
     int inputImageCnt = 0;
     FeaturePointMap featurePointMap;
-    
+
     // 这个特征类就是为了构建这个特征点队列
-    queue<pair<double, FeaturePointMap>> featureBuf;
+    queue<pair<double, FeaturePointMap>> featureQueue;
 
     FeatureTracker(Parameters::Ptr Ptr);
-    FeatureTracker() = delete;
+    FeatureTracker() = default;
     ~FeatureTracker();
     void IntrinsicParameter();
     FeaturePointMap trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1);

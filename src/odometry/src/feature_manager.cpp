@@ -9,7 +9,7 @@ FeatureManager::FeatureManager(Matrix3d _Rs[], Parameters::Ptr _paramPtr):Rs(_Rs
 }
 
 void FeatureManager::initFramePoseByPnP(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vector3d tic[], Matrix3d ric[]){
-    if(frameCnt > 0){
+    if(frameCnt >= 1){ // 第 0 帧不会参与到PnP解算中
         vector<cv::Point2f> pts2D;
         vector<cv::Point3f> pts3D;
         for (auto &_featurePoint : featurePointList){
@@ -26,17 +26,17 @@ void FeatureManager::initFramePoseByPnP(int frameCnt, Vector3d Ps[], Matrix3d Rs
                 }
             }
         }
-        Eigen::Matrix3d RCam;
-        Eigen::Vector3d PCam;
-        // 第0帧的 相机坐标系到世界坐标系的转换
-        RCam = Rs[frameCnt - 1] * ric[0];
-        PCam = Rs[frameCnt - 1] * tic[0] + Ps[frameCnt - 1];
 
-        if(solvePoseByPnP(RCam, PCam, pts2D, pts3D))
-        {
-            // trans to w_T_imu
-            Rs[frameCnt] = RCam * ric[0].transpose(); 
-            Ps[frameCnt] = -RCam * ric[0].transpose() * tic[0] + PCam;
+        // 取前一帧的位姿作为先验位姿，传入 cv::solvePnP 中提高位姿计算效率
+        Eigen::Matrix3d  R_wc = Rs[frameCnt - 1] * ric[0];
+        Eigen::Vector3d  T_wc = Rs[frameCnt - 1] * tic[0] + Ps[frameCnt - 1];
+        Eigen::Matrix3d R_cw = R_wc.transpose();
+        Eigen::Vector3d T_cw = -T_wc;
+
+        if(solvePoseByPnP(R_cw, T_cw, pts2D, pts3D)){
+            // Rs 里面存的是 R_wi , IMU 到世界坐标系的转换
+            Rs[frameCnt] = R_cw.transpose() * ric[0].transpose(); 
+            Ps[frameCnt] = - (Rs[frameCnt] * tic[0]) + (-T_cw);
 
             Eigen::Quaterniond Q(Rs[frameCnt]);
             //cout << "frameCnt: " << frameCnt <<  " pnp Q " << Q.w() << " " << Q.vec().transpose() << endl;
@@ -45,15 +45,8 @@ void FeatureManager::initFramePoseByPnP(int frameCnt, Vector3d Ps[], Matrix3d Rs
     }
 }
 
-bool FeatureManager::solvePoseByPnP(Eigen::Matrix3d &R, Eigen::Vector3d &P, 
+bool FeatureManager::solvePoseByPnP(Eigen::Matrix3d &R, Eigen::Vector3d &T, 
                                       vector<cv::Point2f> &pts2D, vector<cv::Point3f> &pts3D){
-    Eigen::Matrix3d R_initial;
-    Eigen::Vector3d P_initial;                  
-
-    // w_T_cam ---> cam_T_w 
-    R_initial = R.inverse();
-    P_initial = -(R_initial * P);
-
     if (int(pts2D.size()) < 4)
     {
         printf("feature tracking not enough, please slowly move you device! \n");
@@ -61,12 +54,13 @@ bool FeatureManager::solvePoseByPnP(Eigen::Matrix3d &R, Eigen::Vector3d &P,
     }
 
     cv::Mat r, rvec, t, D, tmp_r;
-    cv::eigen2cv(R_initial, tmp_r);
+    cv::eigen2cv(R, tmp_r);
     cv::Rodrigues(tmp_r, rvec);
-    cv::eigen2cv(P_initial, t);
+    cv::eigen2cv(T, t);
+    // 这里不需要求取畸变了，因为我们传进去的是归一化平面上的像素坐标，所以我们直接设置这个内参阵为单位矩阵即可
     cv::Mat K = (cv::Mat_<double>(3, 3) << 1, 0, 0, 0, 1, 0, 0, 0, 1);  
-    bool pnp_succ;
-    pnp_succ = cv::solvePnP(pts3D, pts2D, K, D, rvec, t, 1);
+    // 另外这里传入了一个 rvec 旋转向量，这个是上一帧的位姿，这个先验位姿将作为初始化近似变换，最终会进一步优化他们，这样可以降低计算量
+    bool pnp_succ = cv::solvePnP(pts3D, pts2D, K, D, rvec, t, 1);
     //pnp_succ = solvePnPRansac(pts3D, pts2D, K, D, rvec, t, true, 100, 8.0 / focalLength, 0.99, inliers);
 
     if(!pnp_succ)
@@ -81,9 +75,9 @@ bool FeatureManager::solvePoseByPnP(Eigen::Matrix3d &R, Eigen::Vector3d &P,
     Eigen::MatrixXd T_pnp;
     cv::cv2eigen(t, T_pnp);
 
-    // cam_T_w ---> w_T_cam
-    R = R_pnp.transpose();
-    P = R * (-T_pnp);
+    // PnP得到的是世界坐标系到相机坐标系的转换
+    R = R_pnp;
+    T = T_pnp;
 
     return true;
 }
@@ -143,12 +137,12 @@ bool FeatureManager::addFeatureCheckParallax(int frameCount, const FeaturePointM
         return true; // 说明当前帧是新的关键帧，直接返回
 
     // 3. 计算每个特征在次新帧中和次次新帧中的视差
-    for (auto &it_per_id : featurePointList)
+    for (auto &_featurePoint : featurePointList)
     {
-        if (it_per_id.start_frame <= frameCount - 2 &&
-            it_per_id.start_frame + int(it_per_id.feature_per_frame.size()) - 1 >= frameCount - 1){
+        if (_featurePoint.start_frame <= frameCount - 2 &&
+            _featurePoint.start_frame + int(_featurePoint.feature_per_frame.size()) - 1 >= frameCount - 1){
             // 总视差：该特征点在两帧归一化平面上坐标点的距离
-            parallax_sum += compensatedParallax2(it_per_id, frameCount);
+            parallax_sum += compensatedParallax2(_featurePoint, frameCount);
             parallax_num++;
         }
     }
@@ -224,10 +218,10 @@ void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vec
         {
             int firstFrame = _featurePoint.start_frame;
             Eigen::Matrix<double, 3, 4> leftPose; 
-            // t0,R0 描述的是这个点到世界坐标系的变换
+            // t0,R0 描述的是相机坐标系到世界坐标系的变换
             Eigen::Vector3d t0 = Ps[firstFrame] + Rs[firstFrame] * tic[0];
             Eigen::Matrix3d R0 = Rs[firstFrame] * ric[0];
-            // 这里得到的位姿是世界坐标系下的，可以认为是世界坐标系原点到这个featurePoint的变换，所以R 和 t 都要取逆变换
+            // 这里得到的位姿是世界坐标系到相机坐标系的转换，可以认为是世界坐标系原点到这个featurePoint的变换，所以R 和 t 都要取逆变换
             leftPose.leftCols<3>() = R0.transpose();    // 正交对称群的转置描述了一个相反的旋转
             leftPose.rightCols<1>() = -R0.transpose() * t0;
 

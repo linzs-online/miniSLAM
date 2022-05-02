@@ -8,6 +8,9 @@
 #include "initial_ex_rotation.h"
 #include "initial_sfm.h"
 #include "solve_5pts.h"
+#include "pose_local_parameterization.h"
+#include "imu_factor.h"
+
 #include <opencv2/core/eigen.hpp>
 #include <Eigen/Core>
 #include <eigen3/Eigen/Dense>
@@ -39,6 +42,7 @@ public:
     double prevTime, curTime;
     bool openExEstimation;
 
+    // 都是 IMU 坐标系到世界坐标系的转换
     Vector3d Ps[(windowSize + 1)];
     Vector3d Vs[(windowSize + 1)];
     Matrix3d Rs[(windowSize + 1)];
@@ -65,6 +69,16 @@ public:
     Parameters::Ptr paramPtr;
     InitialEXRotation initial_ex_rotation;
 
+    double para_Pose[windowSize + 1][7];
+    double para_SpeedBias[windowSize + 1][9];
+    double para_Feature[1000][1];
+    double para_Ex_Pose[2][7];
+    double para_Retrive_Pose[7];
+    double para_Td[1][1];
+
+    MarginalizationInfo *last_marginalization_info;
+    vector<double *> last_marginalization_parameter_blocks;
+
     Estimator(Parameters::Ptr &parametersPtr);
     // 获得初始位姿相对于世界坐标原点的旋转矩阵
     void initFirstIMUPose(std::vector<std::pair<double, Eigen::Vector3d>> &accVector);
@@ -72,5 +86,7 @@ public:
     bool initialStructure();
     bool relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l);
     bool visualInitialAlign();
+    void optimization();
+    void vector2double();
     ~Estimator();
 };

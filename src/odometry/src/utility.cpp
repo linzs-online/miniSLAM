@@ -8,7 +8,12 @@
  *******************************************************/
 
 #include "../inc/utility.h"
-
+/**
+ * @brief 返回当前姿态到世界坐标系的旋转，并且抵消yaw
+ * 
+ * @param g 
+ * @return Eigen::Matrix3d 
+ */
 Eigen::Matrix3d Utility::g2R(const Eigen::Vector3d &g)
 {
     Eigen::Matrix3d R0;

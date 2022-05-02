@@ -78,17 +78,20 @@ void PreIntegrated::prevIntegrated(const int& frameCount, vector<pair<double, Ei
         {
             // 根据 dt 以及 每个时刻的IMU数据 传播误差，迭代残差雅克比、协方差矩阵
             pre_integrations[frameCount]->push_back(dt, accVector[i].second, gyrVector[i].second);
-            
+            estimatorPtr->tmp_pre_integration->push_back(dt, accVector[i].second, gyrVector[i].second);
             // 中值积分求测量值
             Vector3d un_acc_0 = estimatorPtr->Rs[frameCount] * (acc_0 - estimatorPtr->Bas[frameCount]) - estimatorPtr->g;
-                // 获得中值角速度
+            
             Vector3d un_gyr = 0.5 * (gyr_0 + gyrVector[i].second) - estimatorPtr->Bgs[frameCount];
-                // 估计变量 R 更新，更新旋转矩阵
+            
+            // 预积分 R 更新，更新旋转矩阵 
             estimatorPtr->Rs[frameCount] *= Utility::deltaQ(un_gyr * dt).toRotationMatrix();
+            
             Vector3d un_acc_1 = estimatorPtr->Rs[frameCount] * (accVector[i].second - estimatorPtr->Bas[frameCount]) - estimatorPtr->g;
-                // 或者中值加速度
+            // 中值加速度
             Vector3d un_acc = 0.5 * (un_acc_0 + un_acc_1);
-                // 估计变量 P 、 V 更新
+            
+            // 预积分 P 、 V 更新
             estimatorPtr->Ps[frameCount] += dt * estimatorPtr->Vs[frameCount] + 0.5 * dt * dt * un_acc;
             estimatorPtr->Vs[frameCount] += dt * un_acc;
         }

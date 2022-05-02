@@ -101,6 +101,7 @@ void processMeasurements(FeatureTracker::Ptr &featureTracker_Ptr,
         vector<pair<double, Eigen::Vector3d>> accVector, gyrVector;
 
         if(!featureTracker_Ptr->featureQueue.empty()){
+            // 1. 取出当前要处理的特征图
             t_featurePointMap = featureTracker_Ptr->featureQueue.front();
             preIntegrated_Ptr->curTime = t_featurePointMap.first + estimator_Ptr->td;
             while (1){   
@@ -125,13 +126,13 @@ void processMeasurements(FeatureTracker::Ptr &featureTracker_Ptr,
                 estimator_Ptr->initFirstIMUPose(accVector);  // 初始化Rs[0]
                 estimator_Ptr->initFirstPoseFlag = true;
             }
-            // 进行预积分，求取 Rs，Vs，Ps
+            // 2. 进行预积分，求取 Rs，Vs，Ps
             preIntegrated_Ptr->prevIntegrated(estimator_Ptr->frameCount, accVector, gyrVector);
             
         }
         m_buf.lock();
 
-        // 优化位姿
+        // 3. 根据特征图和预积分结果优化位姿
         estimator_Ptr->poseEstimation(t_featurePointMap);
 
         // 发布优化结果
