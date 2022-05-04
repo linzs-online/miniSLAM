@@ -15,7 +15,9 @@
 
 class PoseLocalParameterization : public ceres::LocalParameterization
 {
+    //重载的Plus函数给出了四元数的更新方法，接受参数分别为优化前的四元数【x】，用旋转矢量表示的增量【delta】，以及更新后的四元数【x_plus_delta】
     virtual bool Plus(const double *x, const double *delta, double *x_plus_delta) const;
+    // x对delta的雅克比矩阵
     virtual bool ComputeJacobian(const double *x, double *jacobian) const;
     // 表示参数x的自由度（可能有冗余），比如四元数的自由度是4，旋转矩阵的自由度是9
     virtual int GlobalSize() const { return 7; };

@@ -449,7 +449,7 @@ void Estimator::optimization(){
     for (int i = 0; i < frameCount + 1; i++)
     {
         ceres::LocalParameterization *local_parameterization = new PoseLocalParameterization();
-        problem.AddParameterBlock(para_Pose[i], 7, local_parameterization);
+        problem.AddParameterBlock(para_Pose[i], 7, local_parameterization); //重构参数，优化时实际使用的是3维空间位置矢量+3维的等效旋转矢量
         problem.AddParameterBlock(para_SpeedBias[i], 9);
     }
     // 2.2 相机外参
@@ -471,12 +471,6 @@ void Estimator::optimization(){
         problem.SetParameterBlockConstant(para_Td[0]);
     
     // 3. 添加残差模块
-    if (last_marginalization_info && last_marginalization_info->valid){
-        // construct new marginlization_factor
-        MarginalizationFactor *marginalization_factor = new MarginalizationFactor(last_marginalization_info);
-        problem.AddResidualBlock(marginalization_factor, NULL,
-                                 last_marginalization_parameter_blocks);
-    }
     for (int i = 0; i < frameCount; i++){
         int j = i + 1;
         if (pre_integrations[j]->sum_dt > 10.0)
@@ -484,6 +478,14 @@ void Estimator::optimization(){
         IMUFactor* imu_factor = new IMUFactor(pre_integrations[j]);
         problem.AddResidualBlock(imu_factor, NULL, para_Pose[i], para_SpeedBias[i], para_Pose[j], para_SpeedBias[j]);
     }
+    
+    if (last_marginalization_info && last_marginalization_info->valid){
+        // construct new marginlization_factor
+        MarginalizationFactor *marginalization_factor = new MarginalizationFactor(last_marginalization_info);
+        problem.AddResidualBlock(marginalization_factor, NULL,
+                                 last_marginalization_parameter_blocks);
+    }
+    
 
 }
 
