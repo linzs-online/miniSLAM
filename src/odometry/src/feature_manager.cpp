@@ -81,22 +81,72 @@ bool FeatureManager::solvePoseByPnP(Eigen::Matrix3d &R, Eigen::Vector3d &T,
 
     return true;
 }
-
+/**
+ * @brief 统计当前系统中记录的特征点的数量
+ * 
+ * @return int 
+ */
 int FeatureManager::getFeatureCount(){
     int cnt = 0;
     for (auto &_pts : featurePointList){   
         _pts.obsCount = _pts.feature_per_frame.size();
-        // 如果这个特征点在两帧上被观测到了，并且第一次观测到的帧数不是最后，说明这个特征点有效
-        if (_pts.obsCount >= 4 && _pts.start_frame < windowSize - 2){
+        if (_pts.obsCount >= 4){
             cnt++;
         }
     }
     return cnt;
 }
 
+/**
+ * @brief 设置深度,这个在void Estimator::double2vector()中用了,如果失败,把solve_flag设置为2
+ * 
+ * @param x 
+ */
+void FeatureManager::setDepth(const Eigen::VectorXd &x)
+{
+    int feature_index = -1;
+    for (auto &it_per_id : featurePointList)
+    {
+        it_per_id.obsCount = it_per_id.feature_per_frame.size();
+        if (it_per_id.obsCount < 4)
+            continue;
+
+        it_per_id.estimated_depth = 1.0 / x(++feature_index);
+        //ROS_INFO("feature id %d , start_frame %d, depth %f ", it_per_id->feature_id, it_per_id-> start_frame, it_per_id->estimated_depth);
+        
+        // 深度失败
+        if (it_per_id.estimated_depth < 0)
+        {
+            it_per_id.solve_flag = 2;
+        }
+        else
+            it_per_id.solve_flag = 1;
+    }
+}
+// 清除深度求解失败的点
+void FeatureManager::removeFailures()
+{
+    for (auto it = featurePointList.begin(), it_next = featurePointList.begin();
+         it != featurePointList.end(); it = it_next)
+    {
+        it_next++;
+        if (it->solve_flag == 2)
+            featurePointList.erase(it);
+    }
+}
+
+/**
+ * @brief 把当前帧的特征点记录下来，并对当前帧与之前帧进行视差比较，判定采取的边缘化策略
+ * 
+ * @param frameCount 
+ * @param _featurepointMap 
+ * @param td 
+ * @return true 说明当前帧是关键帧
+ * @return false 
+ */
 bool FeatureManager::addFeatureCheckParallax(int frameCount, const FeaturePointMap &_featurepointMap, double td)
 {
-    ROS_DEBUG("input feature: %d", (int)_featurepointMap.size());  // 特征点的数量
+    ROS_DEBUG("input feature: %d", (int)_featurepointMap.size());  // 改帧上的特征点的数量
     ROS_DEBUG("num of feature: %d", getFeatureCount());      // 目前为止有效的特征点个数
 
     double parallax_sum = 0;    // 所有特征点的视差总和
@@ -181,7 +231,13 @@ double FeatureManager::compensatedParallax2(const FeaturePoint &_featurePoint, i
     return ans;
 }
 
-// 获得指定两帧的共视特征点3D坐标
+/**
+ * @brief 获得指定两帧的共视点的归一化坐标
+ * 
+ * @param frame_count_l 
+ * @param frame_count_r 
+ * @return vector<pair<Vector3d, Vector3d>> 
+ */
 vector<pair<Vector3d, Vector3d>> FeatureManager::getCorresponding(int frame_count_l, int frame_count_r)
 {
     vector<pair<Vector3d, Vector3d>> corres;
@@ -210,6 +266,15 @@ void FeatureManager::clearDepth()
         featurePoint.estimated_depth = -1;
 }
 
+/**
+ * @brief 对所有的特征点进行三角化
+ * 
+ * @param frameCnt 
+ * @param Ps 
+ * @param Rs 
+ * @param tic 
+ * @param ric 
+ */
 void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vector3d tic[], Matrix3d ric[]){
     for (auto &_featurePoint : featurePointList){
         if (_featurePoint.estimated_depth > 0)
@@ -257,6 +322,15 @@ void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vec
     
 }
 
+/**
+ * @brief 子调用函数，用 SVD方法求解超定方程组，三角化获得特定点的深度
+ * 
+ * @param Pose0 
+ * @param Pose1 
+ * @param point0 
+ * @param point1 
+ * @param point_3d 结果存放
+ */
 void FeatureManager::triangulatePoint(Eigen::Matrix<double, 3, 4> &Pose0, Eigen::Matrix<double, 3, 4> &Pose1,
                         Eigen::Vector2d &point0, Eigen::Vector2d &point1, Eigen::Vector3d &point_3d){
     Eigen::Matrix4d design_matrix = Eigen::Matrix4d::Zero();
@@ -275,4 +349,26 @@ void FeatureManager::triangulatePoint(Eigen::Matrix<double, 3, 4> &Pose0, Eigen:
     point_3d(0) = triangulated_point(0) / triangulated_point(3);
     point_3d(1) = triangulated_point(1) / triangulated_point(3);
     point_3d(2) = triangulated_point(2) / triangulated_point(3);
+}
+/**
+ * @brief 获取特征点的逆深度
+ * 
+ * @return Eigen::VectorXd 
+ */
+Eigen::VectorXd FeatureManager::getDepthVector()
+{
+    Eigen::VectorXd dep_vec(getFeatureCount());
+    int feature_index = -1;
+    for (auto &it_per_id : featurePointList)
+    {
+        it_per_id.obsCount = it_per_id.feature_per_frame.size();
+        if (it_per_id.obsCount < 4)
+            continue;
+#if 1
+        dep_vec(++feature_index) = 1. / it_per_id.estimated_depth;
+#else
+        dep_vec(++feature_index) = it_per_id->estimated_depth;
+#endif
+    }
+    return dep_vec;
 }

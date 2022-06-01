@@ -13,7 +13,7 @@
 #include <eigen3/Eigen/Dense>
 
 #include "utility.h"
-#include "../parameters/src/parameters.h"
+#include "../../parameters/src/parameters.h"
 #include "pre_integrated.h"
 
 #include <ceres/ceres.h>

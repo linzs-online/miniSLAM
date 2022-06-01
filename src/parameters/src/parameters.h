@@ -3,15 +3,18 @@
 #include <map>
 #include <eigen3/Eigen/Dense>
 #include <vector>
+#include <opencv2/opencv.hpp>
+#include <opencv2/core/eigen.hpp>
 #include <memory>
 
+using namespace std;
 using Vector3d = Eigen::Matrix<double, 3, 1>;
 using Vector2d = Eigen::Matrix<double, 2, 1>;
 using Matrix3d = Eigen::Matrix<double, 3, 3>;
 using Quaterniond = Eigen::Quaternion<double>;
 using MatrixXd = Eigen::Matrix<double, -1, -1>;
 
-vector<Eigen::Matrix3d> RIC;
+vector<Eigen::Matrix3d> RIC;    // IMU 到 Cam
 vector<Eigen::Vector3d> TIC;
 const int windowSize = 10;
 const double FOCAL_LENGTH = 460.0;
@@ -22,7 +25,7 @@ private:
     /* data */
 public:
     using Ptr = std::shared_ptr<Parameters>;
-    Parameters(/* args */);
+    Parameters(std::string configFilePath);
     void readParameters(std::string configFilePath);
     ~Parameters();
 
@@ -31,15 +34,19 @@ public:
     const int NUM_OF_F = 1000;
 
     std::string IMAGE0_TOPIC, IMAGE1_TOPIC; //话题映射
-    double INIT_DEPTH;
-    double MIN_PARALLAX;
-    double ACC_N, ACC_W;
+    double INIT_DEPTH;  // 每个点的初始深度
+    double MIN_PARALLAX; // 最小视差
+
+    double ACC_N, ACC_W;    // 传感器噪声
     double GYR_N, GYR_W;
 
-    std::vector<Eigen::Matrix3d> RIC;
+    std::vector<Eigen::Matrix3d> RIC;   // 外参矩阵
     std::vector<Eigen::Vector3d> TIC;
 
-    Eigen::Vector3d G{0.0, 0.0, 9.8};
+    std::vector<cv::Mat> distCoeffs; 
+    std::vector<cv::Mat> cameraMatrix;
+
+    Eigen::Vector3d G{0.0, 0.0, 9.8};   
 
     double BIAS_ACC_THRESHOLD;
     double BIAS_GYR_THRESHOLD;

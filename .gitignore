@@ -1,41 +1,6 @@
-<<<<<<< HEAD
 bin/
 build/
 devel/
 .vscode/
 .catkin_workspace
 build.sh
-=======
-# Prerequisites
-*.d
-
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
-*.out
-*.app
->>>>>>> 0c9322e961564ef078a5d4fcfec2f76ca2f29965

@@ -1,6 +1,6 @@
 #pragma once
 #include "../../parameters/src/parameters.h"
-#include "../inc/feature_tracker.h"
+#include "../../feature_tracker/inc/feature_tracker.h"
 
 // 存储每帧中的特征点信息
 class FeaturePerFrame
@@ -77,9 +77,11 @@ public:
     double compensatedParallax2(const FeaturePoint &_featurePoint, int frame_count);
     void clearDepth();
     void triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vector3d tic[], Matrix3d ric[]);
+    Eigen::VectorXd getDepthVector();
     // 获得两张图片的角点
     vector<pair<Vector3d, Vector3d>> getCorresponding(int frame_count_l, int frame_count_r);
-
+    void setDepth(const Eigen::VectorXd &x);
+    void removeFailures();
     void triangulatePoint(Eigen::Matrix<double, 3, 4> &Pose0, Eigen::Matrix<double, 3, 4> &Pose1,
                         Eigen::Vector2d &point0, Eigen::Vector2d &point1, Eigen::Vector3d &point_3d);
     bool solvePoseByPnP(Eigen::Matrix3d &R, Eigen::Vector3d &P, vector<cv::Point2f> &pts2D, vector<cv::Point3f> &pts3D);

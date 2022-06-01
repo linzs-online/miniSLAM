@@ -3,19 +3,29 @@
 
 
 InitialEXRotation::InitialEXRotation(){
-    frame_count = 0;
+    this->frame_count = 0;
     Rc.push_back(Matrix3d::Identity());
     Rc_g.push_back(Matrix3d::Identity());
     Rimu.push_back(Matrix3d::Identity());
     ric = Matrix3d::Identity();
 }
-
+/**
+ * @brief 外参在线标定
+ * 
+ * @param corres 两帧图像之间的共视特征点
+ * @param delta_q_imu 两帧图像之间的IMU预积分量
+ * @param calib_ric_result 标定结果存放
+ * @return true 
+ * @return false 
+ */
 bool InitialEXRotation::CalibrationExRotation(vector<pair<Vector3d, Vector3d>> corres, Quaterniond delta_q_imu, Matrix3d &calib_ric_result)
 {
-    frame_count++;
-    Rc.push_back(solveRelativeR(corres));// 求取帧间变换阵R
+    this->frame_count++; // 记录进入该函数的次数
 
-    Rimu.push_back(delta_q_imu.toRotationMatrix()); // 两帧之间的陀螺仪预积分值中的旋转变化量delta_q
+    Rc.push_back(solveRelativeR(corres));// 求取帧间变换阵R，（第k+1帧变换到第k帧的）R_c(k+1)^ck
+
+    Rimu.push_back(delta_q_imu.toRotationMatrix()); // 两帧之间的陀螺仪预积分值中的旋转变化量 R
+
     Rc_g.push_back(ric.inverse() * delta_q_imu * ric);  // 图像k帧到k+1帧的旋转
 
     Eigen::MatrixXd A(frame_count * 4, 4);
@@ -25,7 +35,7 @@ bool InitialEXRotation::CalibrationExRotation(vector<pair<Vector3d, Vector3d>> c
     {
         Quaterniond r1(Rc[i]);
         Quaterniond r2(Rc_g[i]);
-
+        // 两个线性变换转过的角度
         double angular_distance = 180 / M_PI * r1.angularDistance(r2);
         //ROS_DEBUG("%d %f", i, angular_distance);
         // 加权的方式控制误匹配的点
@@ -33,6 +43,7 @@ bool InitialEXRotation::CalibrationExRotation(vector<pair<Vector3d, Vector3d>> c
         ++sum_ok;
         Matrix4d L, R;
 
+        // 构建四元数左乘矩阵
         double w = Quaterniond(Rc[i]).w();
         Vector3d q = Quaterniond(Rc[i]).vec();
         L.block<3, 3>(0, 0) = w * Matrix3d::Identity() + Utility::skewSymmetric(q);
@@ -40,6 +51,7 @@ bool InitialEXRotation::CalibrationExRotation(vector<pair<Vector3d, Vector3d>> c
         L.block<1, 3>(3, 0) = -q.transpose();
         L(3, 3) = w;
 
+        // 构建四元数右乘矩阵
         Quaterniond R_ij(Rimu[i]);
         w = R_ij.w();
         q = R_ij.vec();
@@ -48,12 +60,14 @@ bool InitialEXRotation::CalibrationExRotation(vector<pair<Vector3d, Vector3d>> c
         R.block<1, 3>(3, 0) = -q.transpose();
         R(3, 3) = w;
 
+        // 超定方程系数矩阵
         A.block<4, 4>((i - 1) * 4, 0) = huber * (L - R);
     }
 
     JacobiSVD<MatrixXd> svd(A, ComputeFullU | ComputeFullV);
     Matrix<double, 4, 1> x = svd.matrixV().col(3);
     Quaterniond estimated_R(x);
+    // 这里得到的是R_ci，取逆可得 R_ic
     ric = estimated_R.toRotationMatrix().inverse();
     //cout << svd.singularValues().transpose() << endl;
     //cout << ric << endl;
@@ -61,6 +75,7 @@ bool InitialEXRotation::CalibrationExRotation(vector<pair<Vector3d, Vector3d>> c
     ric_cov = svd.singularValues().tail<3>();
 
     // 用0.25来限定倒数第二小的奇异值，如果全部奇异值都非常小接近0,则说明相机没有进行充分的旋转，无法进行初始化
+    // 至少会迭代windowSize次
     if (frame_count >= windowSize && ric_cov(1) > 0.25)
     {
         calib_ric_result = ric;

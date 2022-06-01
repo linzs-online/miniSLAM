@@ -1,7 +1,7 @@
 #pragma once
 #include "../../parameters/src/parameters.h"
 #include "feature_manager.h"
-#include "feature_tracker.h"
+#include "../../feature_tracker/inc/feature_tracker.h"
 #include "utility.h"
 #include "pre_integrated.h"
 #include "initial_alignment.h"
@@ -10,6 +10,10 @@
 #include "solve_5pts.h"
 #include "pose_local_parameterization.h"
 #include "imu_factor.h"
+#include "marginalization_factor.h"
+#include "projectionOneFrameTwoCamFactor.h"
+#include "projectionTwoFrameOneCamFactor.h"
+#include "projectionTwoFrameTwoCamFactor.h"
 
 #include <opencv2/core/eigen.hpp>
 #include <Eigen/Core>
@@ -54,15 +58,15 @@ public:
     vector<Vector3d> angular_velocity_buf[(windowSize + 1)];
 
     Vector3d g;
-    FeatureTracker featureTracker; // 提取特征的
-    FeatureManager f_manager;   // 管理特征的
-    MotionEstimator m_estimator;    // 求解参考帧的
+    FeatureTracker featureTracker; // 提取特征点
+    FeatureManager f_manager;   // 管理特征�?
+    MotionEstimator m_estimator;    // 求解参考帧�?
     bool marginalization_flag;
     int frameCount;
     int inputImageCnt;
 
     double Headers[(windowSize + 1)];
-    IntegrationBase *pre_integrations[(windowSize + 1)];    // 窗口中每帧都有一个预积分类
+    IntegrationBase *pre_integrations[(windowSize + 1)];    // 窗口中每帧都有一个预积分�?
     IntegrationBase *tmp_pre_integration;
     map<double, ImageFrame> all_image_frame;
     Vector3d acc_0, gyr_0;
@@ -76,8 +80,12 @@ public:
     double para_Retrive_Pose[7];
     double para_Td[1][1];
 
-    MarginalizationInfo *last_marginalization_info;
-    vector<double *> last_marginalization_parameter_blocks;
+    Matrix3d back_R0, last_R, last_R0;
+    Vector3d back_P0, last_P, last_P0;
+    bool failure_occur;//检测是否发生了错误,在failureDetection中
+
+    MarginalizationInfo *last_marginalization_info; //上一个H矩阵matg掉一部分后剩下的内容
+    vector<double *> lastMarg_Res_parameter_blocks;
 
     Estimator(Parameters::Ptr &parametersPtr);
     // 获得初始位姿相对于世界坐标原点的旋转矩阵
@@ -88,5 +96,6 @@ public:
     bool visualInitialAlign();
     void optimization();
     void vector2double();
+    void double2vector();
     ~Estimator();
 };

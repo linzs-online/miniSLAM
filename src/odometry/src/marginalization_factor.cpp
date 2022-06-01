@@ -13,7 +13,7 @@ void ResidualBlockInfo::Evaluate()
 {
     residuals.resize(cost_function->num_residuals());
 
-    std::vector<int> block_sizes = cost_function->parameter_block_sizes();
+    std::vector<int> block_sizes = cost_function->p-arameter_block_sizes();
     raw_jacobians = new double *[block_sizes.size()];
     jacobians.resize(block_sizes.size());
 
@@ -24,24 +24,6 @@ void ResidualBlockInfo::Evaluate()
         //dim += block_sizes[i] == 7 ? 6 : block_sizes[i];
     }
     cost_function->Evaluate(parameter_blocks.data(), residuals.data(), raw_jacobians);
-
-    //std::vector<int> tmp_idx(block_sizes.size());
-    //Eigen::MatrixXd tmp(dim, dim);
-    //for (int i = 0; i < static_cast<int>(parameter_blocks.size()); i++)
-    //{
-    //    int size_i = localSize(block_sizes[i]);
-    //    Eigen::MatrixXd jacobian_i = jacobians[i].leftCols(size_i);
-    //    for (int j = 0, sub_idx = 0; j < static_cast<int>(parameter_blocks.size()); sub_idx += block_sizes[j] == 7 ? 6 : block_sizes[j], j++)
-    //    {
-    //        int size_j = localSize(block_sizes[j]);
-    //        Eigen::MatrixXd jacobian_j = jacobians[j].leftCols(size_j);
-    //        tmp_idx[j] = sub_idx;
-    //        tmp.block(tmp_idx[i], tmp_idx[j], size_i, size_j) = jacobian_i.transpose() * jacobian_j;
-    //    }
-    //}
-    //Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes(tmp);
-    //std::cout << saes.eigenvalues() << std::endl;
-    //ROS_ASSERT(saes.eigenvalues().minCoeff() >= -1e-6);
 
     if (loss_function)
     {
@@ -76,6 +58,8 @@ void ResidualBlockInfo::Evaluate()
         residuals *= residual_scaling_;
     }
 }
+
+
 
 MarginalizationInfo::~MarginalizationInfo()
 {
@@ -116,8 +100,7 @@ void MarginalizationInfo::addResidualBlockInfo(ResidualBlockInfo *residual_block
     }
 }
 
-void MarginalizationInfo::preMarginalize()
-{
+void MarginalizationInfo::preMarginalize(){
     for (auto it : factors)
     {
         it->Evaluate();
@@ -180,8 +163,7 @@ void* ThreadsConstructA(void* threadsstruct)
     return threadsstruct;
 }
 
-void MarginalizationInfo::marginalize()
-{
+void MarginalizationInfo::marginalize(){
     int pos = 0;
     for (auto &it : parameter_block_idx)
     {
@@ -213,34 +195,7 @@ void MarginalizationInfo::marginalize()
     Eigen::VectorXd b(pos);
     A.setZero();
     b.setZero();
-    /*
-    for (auto it : factors)
-    {
-        for (int i = 0; i < static_cast<int>(it->parameter_blocks.size()); i++)
-        {
-            int idx_i = parameter_block_idx[reinterpret_cast<long>(it->parameter_blocks[i])];
-            int size_i = localSize(parameter_block_size[reinterpret_cast<long>(it->parameter_blocks[i])]);
-            Eigen::MatrixXd jacobian_i = it->jacobians[i].leftCols(size_i);
-            for (int j = i; j < static_cast<int>(it->parameter_blocks.size()); j++)
-            {
-                int idx_j = parameter_block_idx[reinterpret_cast<long>(it->parameter_blocks[j])];
-                int size_j = localSize(parameter_block_size[reinterpret_cast<long>(it->parameter_blocks[j])]);
-                Eigen::MatrixXd jacobian_j = it->jacobians[j].leftCols(size_j);
-                if (i == j)
-                    A.block(idx_i, idx_j, size_i, size_j) += jacobian_i.transpose() * jacobian_j;
-                else
-                {
-                    A.block(idx_i, idx_j, size_i, size_j) += jacobian_i.transpose() * jacobian_j;
-                    A.block(idx_j, idx_i, size_j, size_i) = A.block(idx_i, idx_j, size_i, size_j).transpose();
-                }
-            }
-            b.segment(idx_i, size_i) += jacobian_i.transpose() * it->residuals;
-        }
-    }
-    ROS_INFO("summing up costs %f ms", t_summing.toc());
-    */
-    //multi thread
-
+    
     pthread_t tids[NUM_THREADS];
     ThreadsStruct threadsstruct[NUM_THREADS];
     int i = 0;
@@ -328,11 +283,16 @@ std::vector<double *> MarginalizationInfo::getParameterBlocks(std::unordered_map
     return keep_block_addr;
 }
 
+
+/**
+ * @brief Construct a new Marginalization Factor:: Marginalization Factor object
+ * 
+ * @param _marginalization_info 
+ */
 MarginalizationFactor::MarginalizationFactor(MarginalizationInfo* _marginalization_info):marginalization_info(_marginalization_info)
 {
     int cnt = 0;
-    for (auto it : marginalization_info->keep_block_size)
-    {
+    for (auto it : marginalization_info->keep_block_size){
         mutable_parameter_block_sizes()->push_back(it);
         cnt += it;
     }
@@ -340,21 +300,21 @@ MarginalizationFactor::MarginalizationFactor(MarginalizationInfo* _marginalizati
     set_num_residuals(marginalization_info->n);
 };
 
+/**
+ * @brief Evaluate实际上就是告诉优化器，怎么根据新的x，去求解残差、雅克比
+ * 
+ * @param parameters 
+ * @param residuals 
+ * @param jacobians 
+ * @return true 
+ * @return false 
+ */
 bool MarginalizationFactor::Evaluate(double const *const *parameters, double *residuals, double **jacobians) const
 {
-    //printf("internal addr,%d, %d\n", (int)parameter_block_sizes().size(), num_residuals());
-    //for (int i = 0; i < static_cast<int>(keep_block_size.size()); i++)
-    //{
-    //    //printf("unsigned %x\n", reinterpret_cast<unsigned long>(parameters[i]));
-    //    //printf("signed %x\n", reinterpret_cast<long>(parameters[i]));
-    //printf("jacobian %x\n", reinterpret_cast<long>(jacobians));
-    //printf("residual %x\n", reinterpret_cast<long>(residuals));
-    //}
-    int n = marginalization_info->n;
-    int m = marginalization_info->m;
-    Eigen::VectorXd dx(n);
-    for (int i = 0; i < static_cast<int>(marginalization_info->keep_block_size.size()); i++)
-    {
+    int n = marginalization_info->n; // marg剩下的变量的个数
+    int m = marginalization_info->m; // marg变量的个数
+    Eigen::VectorXd dx(n); // 方程中的 delta x
+    for (int i = 0; i < static_cast<int>(marginalization_info->keep_block_size.size()); i++){
         int size = marginalization_info->keep_block_size[i];
         int idx = marginalization_info->keep_block_idx[i] - m;
         Eigen::VectorXd x = Eigen::Map<const Eigen::VectorXd>(parameters[i], size);
@@ -371,10 +331,12 @@ bool MarginalizationFactor::Evaluate(double const *const *parameters, double *re
             }
         }
     }
+    // Eigen::Map内存映射，给出residuals更新方式
     Eigen::Map<Eigen::VectorXd>(residuals, n) = marginalization_info->linearized_residuals + marginalization_info->linearized_jacobians * dx;
+    
+    // 给出雅克比矩阵更新方式
     if (jacobians)
     {
-
         for (int i = 0; i < static_cast<int>(marginalization_info->keep_block_size.size()); i++)
         {
             if (jacobians[i])

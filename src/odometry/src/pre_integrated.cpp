@@ -82,6 +82,7 @@ void PreIntegrated::prevIntegrated(const int& frameCount, vector<pair<double, Ei
             // 中值积分求测量值
             Vector3d un_acc_0 = estimatorPtr->Rs[frameCount] * (acc_0 - estimatorPtr->Bas[frameCount]) - estimatorPtr->g;
             
+            // 移除了偏执之后的角速度
             Vector3d un_gyr = 0.5 * (gyr_0 + gyrVector[i].second) - estimatorPtr->Bgs[frameCount];
             
             // 预积分 R 更新，更新旋转矩阵 
