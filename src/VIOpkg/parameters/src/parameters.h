@@ -14,8 +14,7 @@ using Matrix3d = Eigen::Matrix<double, 3, 3>;
 using Quaterniond = Eigen::Quaternion<double>;
 using MatrixXd = Eigen::Matrix<double, -1, -1>;
 
-vector<Eigen::Matrix3d> RIC;    // IMU 到 Cam
-vector<Eigen::Vector3d> TIC;
+
 const int windowSize = 10;
 const double FOCAL_LENGTH = 460.0;
 Eigen::Vector3d G{0.0, 0.0, 9.8};
@@ -37,8 +36,8 @@ public:
     double INIT_DEPTH;  // 每个点的初始深度
     double MIN_PARALLAX; // 最小视差
 
-    double ACC_N, ACC_W;    // 传感器噪声
-    double GYR_N, GYR_W;
+    double ACC_N, ACC_W;    // 加速度计的白噪声和随机游走噪声
+    double GYR_N, GYR_W;    // 陀螺仪计的白噪声和随机游走噪声
 
     std::vector<Eigen::Matrix3d> RIC;   // 外参矩阵
     std::vector<Eigen::Vector3d> TIC;

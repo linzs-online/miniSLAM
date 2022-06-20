@@ -85,6 +85,10 @@ public:
     void triangulatePoint(Eigen::Matrix<double, 3, 4> &Pose0, Eigen::Matrix<double, 3, 4> &Pose1,
                         Eigen::Vector2d &point0, Eigen::Vector2d &point1, Eigen::Vector3d &point_3d);
     bool solvePoseByPnP(Eigen::Matrix3d &R, Eigen::Vector3d &P, vector<cv::Point2f> &pts2D, vector<cv::Point3f> &pts3D);
+    void removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3d marg_P, Eigen::Matrix3d new_R, Eigen::Vector3d new_P);
+    void removeFront(int frame_count);
+    void removeBack();
+    void removeOutlier(set<int> &outlierIndex);
     ~FeatureManager();
 };
 

@@ -126,8 +126,7 @@ void FeatureManager::setDepth(const Eigen::VectorXd &x)
 // 清除深度求解失败的点
 void FeatureManager::removeFailures()
 {
-    for (auto it = featurePointList.begin(), it_next = featurePointList.begin();
-         it != featurePointList.end(); it = it_next)
+    for (auto it = featurePointList.begin(), it_next = featurePointList.begin(); it != featurePointList.end(); it = it_next)
     {
         it_next++;
         if (it->solve_flag == 2)
@@ -311,13 +310,7 @@ void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vec
                 _featurePoint.estimated_depth = depth;
             else
                 _featurePoint.estimated_depth = paramPtr->INIT_DEPTH;
-
-            continue;
         }
-        // _featurePoint.obsCount = _featurePoint.feature_per_frame.size();
-        // if (_featurePoint.obsCount < 4) // 追踪超过4次的点才会对它估计深度
-        //     continue;
-        // int imu_i = _featurePoint.start_frame, imu_j = imu_i - 1;
     }
     
 }
@@ -371,4 +364,100 @@ Eigen::VectorXd FeatureManager::getDepthVector()
 #endif
     }
     return dep_vec;
+}
+/**
+ * @brief 调整观测到特征点的起始观测帧的信息
+ * 
+ * @param marg_R 
+ * @param marg_P 
+ * @param new_R 
+ * @param new_P 
+ */
+void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3d marg_P, Eigen::Matrix3d new_R, Eigen::Vector3d new_P)
+{
+    for (auto it = featurePointList.begin(), it_next = featurePointList.begin(); it != featurePointList.end(); it = it_next)
+    {
+        it_next++;
+
+        if (it->start_frame != 0)
+            it->start_frame--;
+        else
+        {
+            Eigen::Vector3d uv_i = it->feature_per_frame[0].normPoint;  
+            it->feature_per_frame.erase(it->feature_per_frame.begin());
+            if (it->feature_per_frame.size() < 2) // 直接删除仅在一帧被观测到的点
+            {
+                featurePointList.erase(it);
+                continue;
+            }
+            else
+            {
+                Eigen::Vector3d pts_i = uv_i * it->estimated_depth;
+                Eigen::Vector3d w_pts_i = marg_R * pts_i + marg_P;
+                Eigen::Vector3d pts_j = new_R.transpose() * (w_pts_i - new_P);
+                double dep_j = pts_j(2);
+                if (dep_j > 0)
+                    it->estimated_depth = dep_j;
+                else
+                    it->estimated_depth = paramPtr->INIT_DEPTH;
+            }
+        }
+    }
+}
+
+void FeatureManager::removeBack()
+{
+    for (auto it = featurePointList.begin(), it_next = featurePointList.begin(); it != featurePointList.end(); it = it_next)
+    {
+        it_next++;
+
+        if (it->start_frame != 0)
+            it->start_frame--;
+        else
+        {
+            it->feature_per_frame.erase(it->feature_per_frame.begin());
+            if (it->feature_per_frame.size() == 0)
+                featurePointList.erase(it);
+        }
+    }
+}
+
+// 在marg掉次新帧的时候会用
+void FeatureManager::removeFront(int frame_count)
+{
+    for (auto it = featurePointList.begin(), it_next = featurePointList.begin(); it != featurePointList.end(); it = it_next)
+    {
+        it_next++;
+
+        if (it->start_frame == frame_count)
+        {
+            it->start_frame--;
+        }
+        else
+        {
+            int j = windowSize - 1 - it->start_frame;
+            if (it->endFrame() < frame_count - 1)
+                continue;
+            it->feature_per_frame.erase(it->feature_per_frame.begin() + j);
+            if (it->feature_per_frame.size() == 0)
+                featurePointList.erase(it);
+        }
+    }
+}
+
+// 移除野点
+void FeatureManager::removeOutlier(set<int> &outlierIndex)
+{
+    std::set<int>::iterator itSet;
+    for (auto it = featurePointList.begin(), it_next = featurePointList.begin(); it != featurePointList.end(); it = it_next)
+    {
+        it_next++;
+        int index = it->feature_id;
+        itSet = outlierIndex.find(index);
+        if(itSet != outlierIndex.end())
+        {
+            featurePointList.erase(it);
+            //printf("remove outlier %d \n", index);
+        }
+    }
 }

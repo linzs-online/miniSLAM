@@ -1,46 +1,51 @@
 #include "../inc/pre_integrated.h"
 
 
-PreIntegrated::PreIntegrated(Parameters::Ptr &parametersPtr, IMU_subscriber::Ptr &IMU_sub_Ptr)
-{
-    IMU_Ptr = IMU_sub_Ptr;
-    ParametersPtr = parametersPtr;
-}
 
-
-bool PreIntegrated::IMUAvailable(double t){
-    if(!IMU_Ptr->acc_buf.empty() && t <= IMU_Ptr->acc_buf.back().first)
+bool IMUAvailable(double &t, IMU_subscriber::Ptr &imu_subPtr){
+    if(!imu_subPtr->acc_buf.empty() && t <= imu_subPtr->acc_buf.back().first)
         return true;
     else
         return false;
 }
 
-
-bool PreIntegrated::getIMUInterVal(double t0, double t1, vector<pair<double, Eigen::Vector3d>> &accVector, 
-                                vector<pair<double, Eigen::Vector3d>> &gyrVector)
+/**
+ * @brief 根据imu_subPtr和时间区间获取要积分的IMU数据
+ * 
+ * @param t0 
+ * @param t1 
+ * @param imu_subPtr 
+ * @param accVector 
+ * @param gyrVector 
+ * @return true 
+ * @return false 
+ */
+bool getIMUInterVal(double t0, double t1, IMU_subscriber::Ptr &imu_subPtr, 
+                                                         vector<pair<double, Eigen::Vector3d>> &accVector, 
+                                                         vector<pair<double, Eigen::Vector3d>> &gyrVector)
 {
-    if(IMU_Ptr->acc_buf.empty())
+    if(imu_subPtr->acc_buf.empty())
     {
         printf("not receive imu\n");
         return false;
     }
-    if(t1 <= IMU_Ptr->acc_buf.back().first)
+    if(t1 <= imu_subPtr->acc_buf.back().first)
     {
         // 在t0 之前的IMU数据全部丢弃
-        while (IMU_Ptr->acc_buf.front().first <= t0)
+        while (imu_subPtr->acc_buf.front().first <= t0)
         {
-            IMU_Ptr->acc_buf.pop();
-            IMU_Ptr->gyr_buf.pop();
+            imu_subPtr->acc_buf.pop();
+            imu_subPtr->gyr_buf.pop();
         }
-        while (IMU_Ptr->acc_buf.front().first < t1)
+        while (imu_subPtr->acc_buf.front().first < t1)
         {
-            accVector.push_back(IMU_Ptr->acc_buf.front());
-            IMU_Ptr->acc_buf.pop();
-            gyrVector.push_back(IMU_Ptr->gyr_buf.front());
-            IMU_Ptr->gyr_buf.pop();
+            accVector.push_back(imu_subPtr->acc_buf.front());
+            imu_subPtr->acc_buf.pop();
+            gyrVector.push_back(imu_subPtr->gyr_buf.front());
+            imu_subPtr->gyr_buf.pop();
         }
-        accVector.push_back(IMU_Ptr->acc_buf.front());
-        gyrVector.push_back(IMU_Ptr->gyr_buf.front());
+        accVector.push_back(imu_subPtr->acc_buf.front());
+        gyrVector.push_back(imu_subPtr->gyr_buf.front());
     }
     else
     {
@@ -50,72 +55,58 @@ bool PreIntegrated::getIMUInterVal(double t0, double t1, vector<pair<double, Eig
     return true;
 }                                
 
-
-void PreIntegrated::prevIntegrated(const int& frameCount, vector<pair<double, Eigen::Vector3d>> &accVector,
-                            vector<pair<double, Eigen::Vector3d>> &gyrVector)
-{
-    for(auto i = 0; i < accVector.size(); i++)
+/**
+ * @brief 获得 初始帧 到 世界坐标系 下的变换矩阵 Rs[0]
+ * 
+ * @param accVector 
+ */
+Matrix3d initFirstIMUPose(vector<pair<double, Eigen::Vector3d>> &accVector){
+    ROS_INFO("init first imu pose\n");
+    Eigen::Vector3d averAcc(0, 0, 0);
+    int n = (int)accVector.size();
+    for(size_t i = 0; i < accVector.size(); i++)
     {
-        double dt;
-        if(i == 0)
-            dt = accVector[i].first - prevTime;
-        else if (i == accVector.size() - 1)
-            dt = curTime - accVector[i - 1].first;
-        else
-            dt = accVector[i].first - accVector[i - 1].first;
-        
-        if (!first_imu)
-        { // 第一个IMU数据处理方式
-            first_imu = true;
-            acc_0 = accVector[i].second;
-            gyr_0 = gyrVector[i].second;
-        }
-        if (!pre_integrations[frameCount])
-        {   // 先创造一个预积分类
-            pre_integrations[frameCount] = new IntegrationBase{acc_0, gyr_0, estimatorPtr->Bas[frameCount], estimatorPtr->Bgs[frameCount]};
-        }
-        if(frameCount != 0)
-        {
-            // 根据 dt 以及 每个时刻的IMU数据 传播误差，迭代残差雅克比、协方差矩阵
-            pre_integrations[frameCount]->push_back(dt, accVector[i].second, gyrVector[i].second);
-            estimatorPtr->tmp_pre_integration->push_back(dt, accVector[i].second, gyrVector[i].second);
-            // 中值积分求测量值
-            Vector3d un_acc_0 = estimatorPtr->Rs[frameCount] * (acc_0 - estimatorPtr->Bas[frameCount]) - estimatorPtr->g;
-            
-            // 移除了偏执之后的角速度
-            Vector3d un_gyr = 0.5 * (gyr_0 + gyrVector[i].second) - estimatorPtr->Bgs[frameCount];
-            
-            // 预积分 R 更新，更新旋转矩阵 
-            estimatorPtr->Rs[frameCount] *= Utility::deltaQ(un_gyr * dt).toRotationMatrix();
-            
-            Vector3d un_acc_1 = estimatorPtr->Rs[frameCount] * (accVector[i].second - estimatorPtr->Bas[frameCount]) - estimatorPtr->g;
-            // 中值加速度
-            Vector3d un_acc = 0.5 * (un_acc_0 + un_acc_1);
-            
-            // 预积分 P 、 V 更新
-            estimatorPtr->Ps[frameCount] += dt * estimatorPtr->Vs[frameCount] + 0.5 * dt * dt * un_acc;
-            estimatorPtr->Vs[frameCount] += dt * un_acc;
-        }
-        acc_0 = accVector[i].second;
-        gyr_0 = accVector[i].second; 
+        averAcc = averAcc + accVector[i].second;
     }
+    averAcc = averAcc / n;
+    ROS_INFO("averge acc %f %f %f\n", averAcc.x(), averAcc.y(), averAcc.z());
+    Matrix3d R0 = Utility::g2R(averAcc);
+    cout << "init R0 " << endl << R0 << endl;
+    return R0;
+    //Vs[0] = Vector3d(5, 0, 0);
 }
+
 
 
 
 IntegrationBase::IntegrationBase(const Eigen::Vector3d &_acc_0, const Eigen::Vector3d &_gyr_0,
-                    const Eigen::Vector3d &_linearized_ba, const Eigen::Vector3d &_linearized_bg)
-                : acc_0{_acc_0}, gyr_0{_gyr_0}, linearized_acc{_acc_0}, linearized_gyr{_gyr_0}
+                    const Eigen::Vector3d &_linearized_ba, const Eigen::Vector3d &_linearized_bg,
+                    double &ACC_N, double &GYR_N, double &ACC_W, double &GYR_W)
+                : acc_0{_acc_0}, gyr_0{_gyr_0}, linearized_acc{_acc_0}, linearized_gyr{_gyr_0},
+                  linearized_ba{_linearized_ba}, linearized_bg{_linearized_bg},
+                  jacobian{Eigen::Matrix<double, 15, 15>::Identity()}, covariance{Eigen::Matrix<double, 15, 15>::Zero()},
+                 sum_dt{0.0}, delta_p{Eigen::Vector3d::Zero()}, delta_q{Eigen::Quaterniond::Identity()}, delta_v{Eigen::Vector3d::Zero()}
 {
-
+        //这个noise是预积分的噪声方差矩阵
+        noise = Eigen::Matrix<double, 18, 18>::Zero();
+        noise.block<3, 3>(0, 0) =  (ACC_N * ACC_N) * Eigen::Matrix3d::Identity();
+        noise.block<3, 3>(3, 3) =  (GYR_N * GYR_N) * Eigen::Matrix3d::Identity();
+        noise.block<3, 3>(6, 6) =  (ACC_N * ACC_N) * Eigen::Matrix3d::Identity();
+        noise.block<3, 3>(9, 9) =  (GYR_N * GYR_N) * Eigen::Matrix3d::Identity();
+        noise.block<3, 3>(12, 12) =  (ACC_W * ACC_W) * Eigen::Matrix3d::Identity();
+        noise.block<3, 3>(15, 15) =  (GYR_W * GYR_W) * Eigen::Matrix3d::Identity();
 }
-
+/**
+ * @brief 计算delta_p，delta_v，delta_q，残差雅可比，残差协方差矩阵
+ * @param dt 
+ * @param acc 
+ * @param gyr 
+ */
 void IntegrationBase::push_back(double dt, const Eigen::Vector3d &acc, const Eigen::Vector3d &gyr)
 {
     dt_buf.push_back(dt);
     acc_buf.push_back(acc);
     gyr_buf.push_back(gyr);
-
     propagate(dt, acc, gyr);
 }
 
@@ -213,6 +204,7 @@ void IntegrationBase::propagate(double _dt, const Eigen::Vector3d &_acc_1, const
     Vector3d result_linearized_ba;
     Vector3d result_linearized_bg;  
 
+    // 误差传递，计算残差雅可比和残差协方差矩阵 
     midPointIntegration(_dt, acc_0, gyr_0, _acc_1, _gyr_1, delta_p, delta_q, delta_v,
                             linearized_ba, linearized_bg,
                             result_delta_p, result_delta_q, result_delta_v,
@@ -230,23 +222,23 @@ void IntegrationBase::propagate(double _dt, const Eigen::Vector3d &_acc_1, const
 }
 
 void IntegrationBase::repropagate(const Eigen::Vector3d &_linearized_ba, const Eigen::Vector3d &_linearized_bg)
-    {
-        sum_dt = 0.0;
-        acc_0 = linearized_acc;
-        gyr_0 = linearized_gyr;
-        delta_p.setZero();
-        delta_q.setIdentity();
-        delta_v.setZero();
-        linearized_ba = _linearized_ba;
-        linearized_bg = _linearized_bg;
-        jacobian.setIdentity();
-        covariance.setZero();
-        for (int i = 0; i < static_cast<int>(dt_buf.size()); i++)
-            propagate(dt_buf[i], acc_buf[i], gyr_buf[i]);
-    }
+{
+    sum_dt = 0.0;
+    acc_0 = linearized_acc;
+    gyr_0 = linearized_gyr;
+    delta_p.setZero();
+    delta_q.setIdentity();
+    delta_v.setZero();
+    linearized_ba = _linearized_ba;
+    linearized_bg = _linearized_bg;
+    jacobian.setIdentity();
+    covariance.setZero();
+    for (int i = 0; i < static_cast<int>(dt_buf.size()); i++)
+        propagate(dt_buf[i], acc_buf[i], gyr_buf[i]);
+}
 
 Eigen::Matrix<double, 15, 1> IntegrationBase::IMU_residuals(const Eigen::Vector3d &Pi, const Eigen::Quaterniond &Qi, const Eigen::Vector3d &Vi, const Eigen::Vector3d &Bai, const Eigen::Vector3d &Bgi,
-                                          const Eigen::Vector3d &Pj, const Eigen::Quaterniond &Qj, const Eigen::Vector3d &Vj, const Eigen::Vector3d &Baj, const Eigen::Vector3d &Bgj)
+                                                            const Eigen::Vector3d &Pj, const Eigen::Quaterniond &Qj, const Eigen::Vector3d &Vj, const Eigen::Vector3d &Baj, const Eigen::Vector3d &Bgj)
 {
     // 预积分残差
     Eigen::Matrix<double, 15, 1> residuals;

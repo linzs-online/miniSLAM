@@ -17,8 +17,11 @@
 #include "pre_integrated.h"
 
 #include <ceres/ceres.h>
-// 如果在编译时知道参数块的大小和残差向量的大小(这是常见的情况)，
-// 则可以使用SizedCostFunction，这些值可以被指定为模板参数，用户只需要实现CostFunction::Evaluate()
+
+/**
+ * @brief 计算残差和雅可比矩阵
+ * 
+ */
 class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
 {
   public:
@@ -43,7 +46,7 @@ class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
         Eigen::Vector3d Baj(parameters[3][3], parameters[3][4], parameters[3][5]);
         Eigen::Vector3d Bgj(parameters[3][6], parameters[3][7], parameters[3][8]);
 
-        // 设置残差更新方式
+        // 设置残差更新方式，用内存映射的方式给出residuals的结果
         Eigen::Map<Eigen::Matrix<double, 15, 1>> residual(residuals);
         residual = pre_integration->IMU_residuals(Pi, Qi, Vi, Bai, Bgi,
                                             Pj, Qj, Vj, Baj, Bgj);

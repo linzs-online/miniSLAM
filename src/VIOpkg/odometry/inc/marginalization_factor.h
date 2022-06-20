@@ -18,21 +18,19 @@
 
 #include "utility.h"
 
-
-const int NUM_THREADS = 4;
-
+/**
+ * @brief 记录 优化参数、costFunction、lossFunction的地址，方便后面进行边缘化操作删除和修改
+ * 
+ */
 struct ResidualBlockInfo
 {
-    // 记录 整个优化器的 优化参数、costFunction、lossFunction的地址，方便后面进行边缘化操作删除和修改
     ResidualBlockInfo(ceres::CostFunction *_cost_function, ceres::LossFunction *_loss_function, std::vector<double *> _parameter_blocks, std::vector<int> _drop_set)
         : cost_function(_cost_function), loss_function(_loss_function), parameter_blocks(_parameter_blocks), drop_set(_drop_set) {}
     
-    //用于计算当前时刻的残差和雅克比
-    void Evaluate();
-
-    ceres::CostFunction *cost_function;
+    void Evaluate();  // 使用马氏距离函数，里面重新定义了 带归一化尺度的 残差和雅可比矩阵
+    ceres::CostFunction *cost_function;  // 残差和雅可比矩阵的更新方式
     ceres::LossFunction *loss_function;
-    std::vector<double *> parameter_blocks;
+    std::vector<double *> parameter_blocks;  // 与边缘化有关的变量块的地址
     // 待marg的变量的ID
     std::vector<int> drop_set;
 
@@ -56,7 +54,7 @@ struct ThreadsStruct
     std::unordered_map<long, int> parameter_block_idx; //local size
 };
 /**
- * @brief 这个类保存了优化时上一步边缘化后保留下来的先验信息
+ * @brief 上一步边缘化后保留下来的先验信息，主要指从信息矩阵中恢复出来的雅可比矩阵和残差向量
  * 
  */
 class MarginalizationInfo{
@@ -65,29 +63,26 @@ class MarginalizationInfo{
     ~MarginalizationInfo();
     int localSize(int size) const;
     int globalSize(int size) const;
-    // 添加残差块的信息（优化变量、待marg的变量）
-    void addResidualBlockInfo(ResidualBlockInfo *residual_block_info);
-    // 计算每个残差的雅克比，并更新 parameter_block_data
-    void preMarginalize();
+    void addResidualBlockInfo(ResidualBlockInfo *residual_block_info); // 添加残差块的信息（优化变量、待marg的变量）
+    void preMarginalize(); // 计算每个残差的雅克比，并更新 parameter_block_data
     void marginalize();
     std::vector<double *> getParameterBlocks(std::unordered_map<long, double *> &addr_shift);
-    //这里将参数块分为Xm,Xb,Xr；  Xm表示被marg掉的参数块，Xb表示与Xm相连接的参数块，Xr表示剩余的参数块
     std::vector<ResidualBlockInfo *> factors;
     // m 为要marg掉的变量的个数  n 为要保留下的优化变量的个数
     int m, n;
-    std::unordered_map<long, int> parameter_block_size; //global size <优化变量内存地址，localSize>
-    int sum_block_size;
-    std::unordered_map<long, int> parameter_block_idx; //local size
-    std::unordered_map<long, double *> parameter_block_data;  // <优化变量内存地址，数据>
+    std::unordered_map<long, int> parameter_block_size; // 与边缘化有关的变量块的地址，以及该参数中参数的数量，以IMU为例就是[7,9,7,9]
+    int sum_block_size; // 要保留下来的参数块的数量
+    std::unordered_map<long, int> parameter_block_idx; // 与边缘化有关的变量块的地址，以及该变量块在信息矩阵中的起始位置
+    std::unordered_map<long, double *> parameter_block_data;  // <指向与边缘化有关的变量块内存地址，变量块的内存地址> 这是后面preMarg会把相关变量地址拷贝到这个统一内存里面
 
     //以下三个容器数组会在构建marginalization_factor的时候用到
-    std::vector<int> keep_block_size; //global size
-    std::vector<int> keep_block_idx;  //local size
-    std::vector<double *> keep_block_data;
+    std::vector<int> keep_block_size; // 要保留下来的参数块的每块中的参数的数量
+    std::vector<int> keep_block_idx;  // 要保留下来的参数块在信息矩阵中的起始位置
+    std::vector<double *> keep_block_data; // 要保留下来的参数块的每块实际数据地址
 
-    //指的是边缘化之后从信息矩阵恢复出来雅克比矩阵和残差向量
-    Eigen::MatrixXd linearized_jacobians;
-    Eigen::VectorXd linearized_residuals;
+    
+    Eigen::MatrixXd linearized_jacobians; //指的是边缘化之后从信息矩阵恢复出来雅克比矩阵
+    Eigen::VectorXd linearized_residuals; //指的是边缘化之后从信息矩阵恢复出来的残差向量
     const double eps = 1e-8;
     bool valid;
 

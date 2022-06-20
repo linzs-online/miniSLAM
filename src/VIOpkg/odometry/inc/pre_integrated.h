@@ -4,30 +4,12 @@
 #include "../../parameters/src/parameters.h"
 
 
+bool IMUAvailable(double t, IMU_subscriber::Ptr &imu_subPtr);
+bool getIMUInterVal(double t0, double t1, IMU_subscriber::Ptr &imu_subPtr, 
+                                          vector<pair<double, Eigen::Vector3d>> &accVector, 
+                                          vector<pair<double, Eigen::Vector3d>> &gyrVector);
+Matrix3d initFirstIMUPose(vector<pair<double, Eigen::Vector3d>> &accVector);                             
 
-
-class PreIntegrated{
-private:
-
-public:
-    using Ptr = shared_ptr<PreIntegrated>;
-    Parameters::Ptr ParametersPtr;
-    IMU_subscriber::Ptr IMU_Ptr;
-    Estimator::Ptr estimatorPtr;
-    double prevTime = 0.0f, curTime = 0.0f;
-    bool first_imu = false;
-    Vector3d acc_0, gyr_0;
-    IntegrationBase *pre_integrations[(windowSize + 1)];
-
-    PreIntegrated(Parameters::Ptr &parametersPtr, IMU_subscriber::Ptr &IMU_sub_Ptr);
-    bool IMUAvailable(double t);
-    bool getIMUInterVal(double t0, double t1, vector<pair<double, Eigen::Vector3d>> &accBuf, 
-                                vector<pair<double, Eigen::Vector3d>> &gyrBuf);
-    void prevIntegrated(const int& frameCount, vector<pair<double, Eigen::Vector3d>> &accVector,
-                            vector<pair<double, Eigen::Vector3d>> &gyrVector);
-    
-    ~PreIntegrated() = default;
-};
 
 class IntegrationBase
 {
@@ -38,8 +20,8 @@ class IntegrationBase
     Eigen::Vector3d acc_1, gyr_1;
 
     std::vector<double> dt_buf;
-    std::vector<Eigen::Vector3d> acc_buf;
-    std::vector<Eigen::Vector3d> gyr_buf;
+    std::vector<Eigen::Vector3d> acc_buf; // 这上一个相机帧到这一个相机帧时间段里面中每个IMU时刻的加速度计数据
+    std::vector<Eigen::Vector3d> gyr_buf; // 这上一个相机帧到这一个相机帧时间段里面中每个IMU时刻的陀螺仪计数据
 
     double sum_dt;
     Eigen::Vector3d delta_p;
@@ -56,7 +38,8 @@ class IntegrationBase
 
     IntegrationBase() = delete;
     IntegrationBase(const Eigen::Vector3d &_acc_0, const Eigen::Vector3d &_gyr_0,
-                    const Eigen::Vector3d &_linearized_ba, const Eigen::Vector3d &_linearized_bg);
+                    const Eigen::Vector3d &_linearized_ba, const Eigen::Vector3d &_linearized_bg,
+                    double &ACC_N, double &GYR_N, double &ACC_W, double &GYR_W);
     void push_back(double dt, const Eigen::Vector3d &acc, const Eigen::Vector3d &gyr);
     void propagate(double _dt, const Eigen::Vector3d &_acc_1, const Eigen::Vector3d &_gyr_1);
     void repropagate(const Eigen::Vector3d &_linearized_ba, const Eigen::Vector3d &_linearized_bg);

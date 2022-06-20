@@ -8,12 +8,15 @@
  *******************************************************/
 
 #include "../inc/marginalization_factor.h"
-
+/**
+ * @brief 使用马氏距离函数，里面重新计算了 带归一化尺度的 残差和雅可比矩阵
+ * 
+ */
 void ResidualBlockInfo::Evaluate()
 {
     residuals.resize(cost_function->num_residuals());
 
-    std::vector<int> block_sizes = cost_function->p-arameter_block_sizes();
+    std::vector<int> block_sizes = cost_function->parameter_block_sizes();
     raw_jacobians = new double *[block_sizes.size()];
     jacobians.resize(block_sizes.size());
 
@@ -78,33 +81,39 @@ MarginalizationInfo::~MarginalizationInfo()
         delete factors[i];
     }
 }
-
+/**
+ * @brief 主要记录 parameter_block_size 和 parameter_block_idx
+ * 
+ * @param residual_block_info 
+ */
 void MarginalizationInfo::addResidualBlockInfo(ResidualBlockInfo *residual_block_info)
 {
     factors.emplace_back(residual_block_info);
 
-    std::vector<double *> &parameter_blocks = residual_block_info->parameter_blocks;
-    std::vector<int> parameter_block_sizes = residual_block_info->cost_function->parameter_block_sizes();
+    std::vector<double *> &parameter_blocks = residual_block_info->parameter_blocks; // 与边缘化相关的变量块的地址
+    std::vector<int> parameter_block_sizes = residual_block_info->cost_function->parameter_block_sizes(); // 与边缘化相关的变量块中变量的数量
 
     for (int i = 0; i < static_cast<int>(residual_block_info->parameter_blocks.size()); i++)
     {
         double *addr = parameter_blocks[i];
         int size = parameter_block_sizes[i];
-        parameter_block_size[reinterpret_cast<long>(addr)] = size;
+        parameter_block_size[reinterpret_cast<long>(addr)] = size; 
     }
 
     for (int i = 0; i < static_cast<int>(residual_block_info->drop_set.size()); i++)
     {
         double *addr = parameter_blocks[residual_block_info->drop_set[i]];
-        parameter_block_idx[reinterpret_cast<long>(addr)] = 0;
+        parameter_block_idx[reinterpret_cast<long>(addr)] = 0; 
     }
 }
-
+/**
+ * @brief 重新计算与边缘换有关的雅可比矩阵，并把相关参数块地址拷贝到统一内存parameter_block_data中，为边缘化做准备
+ * 
+ */
 void MarginalizationInfo::preMarginalize(){
     for (auto it : factors)
     {
-        it->Evaluate();
-
+        it->Evaluate(); // 计算与边缘换有关的的雅可比矩阵
         std::vector<int> block_sizes = it->cost_function->parameter_block_sizes();
         for (int i = 0; i < static_cast<int>(block_sizes.size()); i++)
         {
@@ -154,28 +163,30 @@ void* ThreadsConstructA(void* threadsstruct)
                 else
                 {
                     p->A.block(idx_i, idx_j, size_i, size_j) += jacobian_i.transpose() * jacobian_j;
-                    p->A.block(idx_j, idx_i, size_j, size_i) = p->A.block(idx_i, idx_j, size_i, size_j).transpose();
+                    p->A.block(idx_j, idx_i, size_j, size_i) = p->A.block(idx_i, idx_j, size_i, size_j).transpose(); //Arm和Amr是互为转置关系
                 }
             }
-            p->b.segment(idx_i, size_i) += jacobian_i.transpose() * it->residuals;
+            p->b.segment(idx_i, size_i) += jacobian_i.transpose() * it->residuals; 
         }
     }
     return threadsstruct;
 }
-
+/**
+ * @brief 补充完整parameter_block_idx，构造信息矩阵，从信息矩阵中反解出雅可比矩阵 和 残差向量
+ * 
+ */
 void MarginalizationInfo::marginalize(){
-    int pos = 0;
+    int pos = 0; // 从0开始记录
     for (auto &it : parameter_block_idx)
     {
         it.second = pos;
         pos += localSize(parameter_block_size[it.first]);
     }
-
-    m = pos;
-
+    // 至此，要边缘化的变量的大小已经记录完成
+    m = pos; 
     for (const auto &it : parameter_block_size)
     {
-        if (parameter_block_idx.find(it.first) == parameter_block_idx.end())
+        if (parameter_block_idx.find(it.first) == parameter_block_idx.end()) // 不记录边缘化变量，仅记录要保留下来的变量
         {
             parameter_block_idx[it.first] = pos;
             pos += localSize(it.second);
@@ -191,36 +202,36 @@ void MarginalizationInfo::marginalize(){
         return;
     }
 
-    Eigen::MatrixXd A(pos, pos);
-    Eigen::VectorXd b(pos);
+    Eigen::MatrixXd A(pos, pos); // 信息矩阵
+    Eigen::VectorXd b(pos); 
     A.setZero();
     b.setZero();
     
-    pthread_t tids[NUM_THREADS];
-    ThreadsStruct threadsstruct[NUM_THREADS];
+    // 4个线程，分别计算四个矩阵块
+    pthread_t tids[4];
+    ThreadsStruct threadsstruct[4];
     int i = 0;
     for (auto it : factors)
     {
         threadsstruct[i].sub_factors.push_back(it);
         i++;
-        i = i % NUM_THREADS;
     }
-    for (int i = 0; i < NUM_THREADS; i++)
+    for (int i = 0; i < 4; i++)
     {
         threadsstruct[i].A = Eigen::MatrixXd::Zero(pos,pos);
         threadsstruct[i].b = Eigen::VectorXd::Zero(pos);
         threadsstruct[i].parameter_block_size = parameter_block_size;
         threadsstruct[i].parameter_block_idx = parameter_block_idx;
-        int ret = pthread_create( &tids[i], NULL, ThreadsConstructA ,(void*)&(threadsstruct[i]));
+        int ret = pthread_create( &tids[i], NULL, ThreadsConstructA ,(void*)&(threadsstruct[i])); //  计算 Amm，Amr, Arm, Arr
         if (ret != 0)
         {
             ROS_WARN("pthread_create error");
             ROS_BREAK();
         }
     }
-    for( int i = NUM_THREADS - 1; i >= 0; i--)  
+    for( int i = 4 - 1; i >= 0; i--)  
     {
-        pthread_join( tids[i], NULL ); 
+        pthread_join( tids[i], NULL );  // 等待所有线程构造矩阵块完成
         A += threadsstruct[i].A;
         b += threadsstruct[i].b;
     }
@@ -233,7 +244,7 @@ void MarginalizationInfo::marginalize(){
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes(Amm);
 
     //ROS_ASSERT_MSG(saes.eigenvalues().minCoeff() >= -1e-4, "min eigenvalue %f", saes.eigenvalues().minCoeff());
-
+    // 这里不直接求逆，而是通过分解为对角矩阵之后进行求逆
     Eigen::MatrixXd Amm_inv = saes.eigenvectors() * Eigen::VectorXd((saes.eigenvalues().array() > eps).select(saes.eigenvalues().array().inverse(), 0)).asDiagonal() * saes.eigenvectors().transpose();
     //printf("error1: %f\n", (Amm * Amm_inv - Eigen::MatrixXd::Identity(m, m)).sum());
 
@@ -245,7 +256,7 @@ void MarginalizationInfo::marginalize(){
     A = Arr - Arm * Amm_inv * Amr;
     b = brr - Arm * Amm_inv * bmm;
 
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes2(A);
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes2(A); // 求对称矩阵的特征值和特征向量
     Eigen::VectorXd S = Eigen::VectorXd((saes2.eigenvalues().array() > eps).select(saes2.eigenvalues().array(), 0));
     Eigen::VectorXd S_inv = Eigen::VectorXd((saes2.eigenvalues().array() > eps).select(saes2.eigenvalues().array().inverse(), 0));
 

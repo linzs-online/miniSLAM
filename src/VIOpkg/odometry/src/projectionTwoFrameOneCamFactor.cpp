@@ -13,7 +13,16 @@
 
 Eigen::Matrix2d ProjectionTwoFrameOneCamFactor::sqrt_info;// 信息矩阵
 
-
+/**
+ * @brief 把当帧的特征点重投影到窗口中的其他各帧，以此计算残差
+ * 
+ * @param _pts_i 当前帧归一化平面上的特征点坐标
+ * @param _pts_j 目标帧归一化平面上的特征点坐标
+ * @param _velocity_i 
+ * @param _velocity_j 
+ * @param _td_i 
+ * @param _td_j 
+ */
 ProjectionTwoFrameOneCamFactor::ProjectionTwoFrameOneCamFactor(const Eigen::Vector3d &_pts_i, const Eigen::Vector3d &_pts_j, 
                                        const Eigen::Vector2d &_velocity_i, const Eigen::Vector2d &_velocity_j,
                                        const double _td_i, const double _td_j) : 
@@ -56,20 +65,20 @@ bool ProjectionTwoFrameOneCamFactor::Evaluate(double const *const *parameters, d
     double td = parameters[4][0];
 
     Eigen::Vector3d pts_i_td, pts_j_td;
-    pts_i_td = pts_i - (td - td_i) * velocity_i;
-    pts_j_td = pts_j - (td - td_j) * velocity_j;
-    Eigen::Vector3d pts_camera_i = pts_i_td / inv_dep_i;
-    Eigen::Vector3d pts_imu_i = qic * pts_camera_i + tic;
-    Eigen::Vector3d pts_w = Qi * pts_imu_i + Pi;
-    Eigen::Vector3d pts_imu_j = Qj.inverse() * (pts_w - Pj);
-    Eigen::Vector3d pts_camera_j = qic.inverse() * (pts_imu_j - tic);
+    pts_i_td = pts_i - (td - td_i) * velocity_i;  // 时间戳补偿
+    pts_j_td = pts_j - (td - td_j) * velocity_j;  
+    Eigen::Vector3d pts_camera_i = pts_i_td / inv_dep_i;  // 投影到正切空间上
+    Eigen::Vector3d pts_imu_i = qic * pts_camera_i + tic; //  变换到IMU坐标系
+    Eigen::Vector3d pts_w = Qi * pts_imu_i + Pi;  // 变换到世界坐标系
+    Eigen::Vector3d pts_imu_j = Qj.inverse() * (pts_w - Pj); // 从世界坐标系变换回IMU坐标系
+    Eigen::Vector3d pts_camera_j = qic.inverse() * (pts_imu_j - tic); // 从IMU坐标系投影到正切空间
     Eigen::Map<Eigen::Vector2d> residual(residuals);
 
 #ifdef UNIT_SPHERE_ERROR 
     residual =  tangent_base * (pts_camera_j.normalized() - pts_j_td.normalized());
 #else
     double dep_j = pts_camera_j.z();
-    residual = (pts_camera_j / dep_j).head<2>() - pts_j_td.head<2>();
+    residual = (pts_camera_j / dep_j).head<2>() - pts_j_td.head<2>();  // 从i帧投影到j帧的坐标 - j帧的观测坐标
 #endif
 
     residual = sqrt_info * residual;
@@ -92,7 +101,8 @@ bool ProjectionTwoFrameOneCamFactor::Evaluate(double const *const *parameters, d
                      - x1 * x3 / pow(norm, 3),            - x2 * x3 / pow(norm, 3),            1.0 / norm - x3 * x3 / pow(norm, 3);
         reduce = tangent_base * norm_jaco;
 #else
-        reduce << 1. / dep_j, 0, -pts_camera_j(0) / (dep_j * dep_j),
+        // r_c对f_cj求导，中间变量
+        reduce << 1. / dep_j, 0, -pts_camera_j(0) / (dep_j * dep_j), 
             0, 1. / dep_j, -pts_camera_j(1) / (dep_j * dep_j);
 #endif
         reduce = sqrt_info * reduce;

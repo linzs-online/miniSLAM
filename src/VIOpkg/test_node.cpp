@@ -3,10 +3,15 @@
 #include "ros_node/inc/subscriber.h"
 #include "ros_node/inc/publisher.h"
 #include "feature_tracker/inc/feature_tracker.h"
+#include "odometry/inc/estimator.h"
 #include <mutex>
 #include <thread>
 using namespace std;
+
 std::mutex m_buf;
+std::mutex mProcess;
+
+bool initFirstPoseFlag = false;
 
 /**
  * @brief 根据订阅图片构建featureQueue特征点队列
@@ -67,65 +72,65 @@ void processImages(ImageSubscriber::Ptr &imageSubscriber_Ptr,
     }
 }
 
-// /**
-//  * @brief 根据特征点、陀螺仪数据优化位姿
-//  * 
-//  * @param featureTracker_Ptr 
-//  * @param IMU_sub_Ptr 
-//  * @param preIntegrated_Ptr 
-//  * @param estimator_Ptr 
-//  */
-// void processMeasurements(FeatureTracker::Ptr &featureTracker_Ptr,
-//                             ImageSubscriber::Ptr &IMU_sub_Ptr,
-//                             PreIntegrated::Ptr &preIntegrated_Ptr,
-//                             Estimator::Ptr &estimator_Ptr){
-//     while (1){
-//         pair<double, FeaturePointMap> t_featurePointMap;
-//         vector<pair<double, Eigen::Vector3d>> accVector, gyrVector;
+/**
+ * @brief 根据特征点、陀螺仪数据优化位姿
+ * 
+ * @param featureTracker_Ptr 
+ * @param IMU_sub_Ptr 
+ * @param preIntegrated_Ptr 
+ * @param estimator_Ptr 
+ */
+void processMeasurements(FeatureTracker::Ptr &featureTracker_Ptr,
+                            IMU_subscriber::Ptr &IMU_sub_Ptr,
+                            Estimator::Ptr &estimator_Ptr){
+    while (1){
+        pair<double, FeaturePointMap> t_featurePointMap;    // 存放特征图队列中读出的特征点信息
+        vector<pair<double, Eigen::Vector3d>> accVector, gyrVector; // 存放要进行积分的IMU数据
 
-//         if(!featureTracker_Ptr->t_featureQueue.empty()){
-//             // 1. 取出当前要处理的特征图
-//             t_featurePointMap = featureTracker_Ptr->t_featureQueue.front();
-//             preIntegrated_Ptr->curTime = t_featurePointMap.first + estimator_Ptr->td;
-//             while (1){   
-//                 // 检查IMU 队列是否准备好
-//                 if (preIntegrated_Ptr->IMUAvailable(preIntegrated_Ptr->curTime))
-//                     break;
-//                 else
-//                 {
-//                     printf("wait for imu ... \n");
-//                     std::chrono::milliseconds dura(5);
-//                     std::this_thread::sleep_for(dura);
-//                 }
-//             }
-//             m_buf.lock();
-//             // 获取要预积分的数组，存放到accVector，gyrVector
-//             preIntegrated_Ptr->getIMUInterVal(preIntegrated_Ptr->prevTime, preIntegrated_Ptr->curTime, accVector, gyrVector);
-//             featureTracker_Ptr->t_featureQueue.pop();
-//             m_buf.unlock();
+        if(!featureTracker_Ptr->t_featureQueue.empty()){
+            // 1. 取出当前要处理的特征图
+            t_featurePointMap = featureTracker_Ptr->t_featureQueue.front();
+            estimator_Ptr->curTime = t_featurePointMap.first + estimator_Ptr->td;
+            while (1){   
+                // 检查IMU 队列是否准备好
+                if (IMUAvailable(estimator_Ptr->curTime, IMU_sub_Ptr))
+                    break;
+                else
+                {
+                    ROS_INFO("wait for imu ... \n");
+                    std::chrono::milliseconds dura(5);
+                    std::this_thread::sleep_for(dura);
+                }
+            }
+            m_buf.lock();
+                // 获取要预积分的数组，存放到accVector，gyrVector
+                getIMUInterVal(estimator_Ptr->prevTime, estimator_Ptr->curTime, IMU_sub_Ptr, accVector, gyrVector);
+                featureTracker_Ptr->t_featureQueue.pop();
+            m_buf.unlock();
 
-//             if(!estimator_Ptr->initFirstPoseFlag)
-//             {   // 初始化世界坐标系原点
-//                 estimator_Ptr->initFirstIMUPose(accVector);  // 初始化Rs[0]，初始姿态到世界坐标系的变换
-//                 estimator_Ptr->initFirstPoseFlag = true;
-//             }
-//             // 2. 进行预积分，求取 Rs，Vs，Ps
-//             preIntegrated_Ptr->prevIntegrated(estimator_Ptr->frameCount, accVector, gyrVector);
-            
-//         }
-//         m_buf.lock();
+            if(!initFirstPoseFlag)
+            {   // 初始化世界坐标系原点
+                estimator_Ptr->Rs[0] = initFirstIMUPose(accVector);  // 初始化Rs[0]，初始姿态到世界坐标系的变换
+                initFirstPoseFlag = true;
+            }
+            // 2. 进行预积分，求取 Rs，Vs，Ps，得到预积分值pre_integrations 还有一个tmp_pre_integration 
+            estimator_Ptr->prevIntegrated(accVector, gyrVector);
+        }
+        mProcess.lock();
 
-//         // 3. 根据特征图和预积分结果优化位姿
-//         estimator_Ptr->poseEstimation(t_featurePointMap);
+        // 3. 根据特征图和预积分结果进行位姿估计
+        estimator_Ptr->poseEstimation(t_featurePointMap);
+        estimator_Ptr->prevTime = estimator_Ptr->curTime;
+        
+        // 发布优化结果
+        //publishResult();
 
-//         // 发布优化结果
-//         //publishResult();
-
-//         std::chrono::milliseconds dura(2);
-//         std::this_thread::sleep_for(dura);
-//     }
+        mProcess.unlock();
+        std::chrono::milliseconds dura(2);
+        std::this_thread::sleep_for(dura);
+    }
     
-// }
+}
 
 int main(int argc, char * argv[])
 {
@@ -142,7 +147,7 @@ int main(int argc, char * argv[])
     // 初始化图像特征提取类
     FeatureTracker::Ptr featureTracker_ptr = make_shared<FeatureTracker>(parameters_ptr);
 
-    // // 注册特征发布ROS 线程
+    // 注册特征发布ROS 线程
     FeaureTrackerPublisher::Ptr featureTrackerPub_ptr = make_shared<FeaureTrackerPublisher>(nh, "image_track", 1000);
     // 注册图像订阅ROS 线程
     ImageSubscriber::Ptr imageSub_ptr = make_shared<ImageSubscriber>(nh, parameters_ptr->IMAGE0_TOPIC, 
@@ -151,17 +156,19 @@ int main(int argc, char * argv[])
     // ros::Publisher imgPub0 = nh.advertise<sensor_msgs::Image>("rawImg",100);
     // ros::Publisher imgPub1 = nh.advertise<sensor_msgs::Image>("dealImg",100);
 
-    // // 注册IMU订阅ROS 线程
-    // IMU_subscriber::Ptr ImuSub_Ptr = make_shared<IMU_subscriber>(nh, parameters_ptr->IMU_TOPIC, 2000);
+    // 注册IMU订阅ROS 线程
+    IMU_subscriber::Ptr ImuSub_Ptr = make_shared<IMU_subscriber>(nh, parameters_ptr->IMU_TOPIC, 2000);
     
-    // // 特征提取线程
+    // 特征提取线程
     std::thread featureTrackThread(processImages, ref(imageSub_ptr),
                                                   ref(featureTracker_ptr),
                                                   ref(featureTrackerPub_ptr));
 
-    // Estimator estimator(parameters_ptr); // 初始化位姿估计器
+    Estimator::Ptr estimator_Ptr = make_shared<Estimator>(parameters_ptr); // 初始化位姿估计器
     // 处理测量值线程
-    // std::thread odometryThread();
+    std::thread odometryThread(processMeasurements, ref(featureTracker_ptr),
+                                                    ref(ImuSub_Ptr),
+                                                    ref(estimator_Ptr));
     ros::spin();
     while (ros::ok())
     {
