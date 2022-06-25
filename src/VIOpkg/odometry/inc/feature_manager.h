@@ -1,7 +1,7 @@
 #pragma once
-#include "../../parameters/src/parameters.h"
 #include "../../feature_tracker/inc/feature_tracker.h"
-
+#include <eigen3/Eigen/Dense>
+using namespace Eigen;
 // 存储每帧中的特征点信息
 class FeaturePerFrame
 {
@@ -89,9 +89,6 @@ public:
     void removeFront(int frame_count);
     void removeBack();
     void removeOutlier(set<int> &outlierIndex);
-    ~FeatureManager();
+    ~FeatureManager(){};
 };
 
-FeatureManager::~FeatureManager()
-{
-}

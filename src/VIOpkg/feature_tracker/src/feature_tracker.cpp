@@ -6,11 +6,14 @@
 #include <stdio.h>
 #include <queue>
 #include <map>
+
+
 using namespace std;
 
 FeatureTracker::FeatureTracker(Parameters::Ptr Ptr):paramPtr(Ptr)
 {
-
+    n_id = 0;
+    inputImageCnt = 0;
 }
 
 
@@ -53,7 +56,7 @@ void reduceVector(vector<int> &v, vector<uchar> status)
 }
 
 
-FeaturePointMap FeatureTracker::trackImage(double _cur_time, const cv::Mat &_img0, const cv::Mat &_img1)
+void FeatureTracker::trackImage(double _cur_time, const cv::Mat &_img0, const cv::Mat &_img1)
 {
     cur_time = _cur_time;
     cur_image = _img0;
@@ -179,7 +182,7 @@ FeaturePointMap FeatureTracker::trackImage(double _cur_time, const cv::Mat &_img
     prevLeftPtsMap.clear();
     for(size_t i = 0; i < cur_pts.size(); i++)
         prevLeftPtsMap[ids[i]] = cur_pts[i];
-    FeaturePointMap featureFrame; //FeaturePointMap =  map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>
+    featurePointMap.clear();
     // 存储左目的特征点
     for (size_t i = 0; i < ids.size(); i++)
     {
@@ -201,7 +204,7 @@ FeaturePointMap FeatureTracker::trackImage(double _cur_time, const cv::Mat &_img
 
         Eigen::Matrix<double, 7, 1> xyz_uv_velocity;
         xyz_uv_velocity << x, y, z, p_u, p_v, velocity_x, velocity_y;
-        featureFrame[feature_id].emplace_back(camera_id,  xyz_uv_velocity);
+        featurePointMap[feature_id].emplace_back(camera_id,  xyz_uv_velocity);
     }
     // 存储右目的特征点
     if (!_img1.empty())
@@ -223,10 +226,9 @@ FeaturePointMap FeatureTracker::trackImage(double _cur_time, const cv::Mat &_img
 
             Eigen::Matrix<double, 7, 1> xyz_uv_velocity;
             xyz_uv_velocity << x, y, z, p_u, p_v, velocity_x, velocity_y;
-            featureFrame[feature_id].emplace_back(camera_id,  xyz_uv_velocity);
+            featurePointMap[feature_id].emplace_back(camera_id,  xyz_uv_velocity);
         }
     }
-    return featureFrame;
 }
 
 cv::Mat FeatureTracker::setMask(){

@@ -1,25 +1,29 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(ros_node)
+
+
+# # include路径
+# include_directories(${PROJECT_SOURCE_DIR}/inc)
+
+find_package(OpenCV REQUIRED) 
+include_directories(${OpenCV_INCLUDE_DIR})   
+
+
+find_package(Eigen3) 
+include_directories(${EIGEN3_INCLUDE_DIR})    
+
 find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  std_msgs
-  cv_bridge
-  geometry_msgs
-  image_transport
+    roscpp
+    std_msgs
 )
-
-find_package(OpenCV REQUIRED)
-message(STATUS "OpenCV_DIR = ${OpenCV_DIR}")
-message(STATUS "OpenCV_INCLUDE_DIRS = ${OpenCV_INCLUDE_DIRS}")
-message(STATUS "OpenCV_LIBS = ${OpenCV_LIBS}")
-
-
 # include路径
-include_directories(${PROJECT_SOURCE_DIR}/inc
-                    ${catkin_INCLUDE_DIRS} 
-                    ${OpenCV_INCLUDE_DIRS}
-                    "/usr/include/eigen3"   # eigen 库只有头文件
-                    )
+include_directories(${catkin_INCLUDE_DIRS})
 
-add_library(${PROJECT_NAME} src/publisher.cpp src/subscriber.cpp)
-target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} ${catkin_LIBRARIES})
+include_directories("./ros_node/inc" 
+                    "./parameters/src"
+                    "./odometry/inc"
+                    "./feature_tracker/inc")
+
+add_library(${PROJECT_NAME} src/publisher.cpp
+                            src/subscriber.cpp)
+target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})

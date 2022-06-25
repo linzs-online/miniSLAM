@@ -1,21 +1,27 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(parameters)
 
+
+# # include路径
+# include_directories(${PROJECT_SOURCE_DIR}/inc)
+
+find_package(OpenCV REQUIRED) 
+include_directories(${OpenCV_INCLUDE_DIR})   
+
+
+find_package(Eigen3) 
+include_directories(${EIGEN3_INCLUDE_DIR})    
+
 find_package(catkin REQUIRED COMPONENTS
-  geometry_msgs
-  roscpp
-  std_msgs
+    roscpp
 )
+# include路径
+include_directories(${catkin_INCLUDE_DIRS})
 
-find_package(OpenCV REQUIRED)
-include_directories(${OpenCV_INCLUDE_DIRS})
+include_directories("./ros_node/inc" 
+                    "./parameters/src"
+                    "./odometry/inc"
+                    "./feature_tracker/inc")
 
-include_directories(
-# include
-  ${catkin_INCLUDE_DIRS}
-  "/usr/include/eigen3"
-)
-
-## Declare a C++ library
 add_library(${PROJECT_NAME} src/parameters.cpp)
-target_link_libraries(${PROJECT_NAME} PUBLIC ${catkin_LIBRARIES} ${OpenCV_LIBS})
+target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})

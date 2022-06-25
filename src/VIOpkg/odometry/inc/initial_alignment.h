@@ -11,8 +11,7 @@
 using namespace Eigen;
 using namespace std;
 // 每张图片都有一个这样的数据结构，里面包含了特征点的信息，以及拍摄到该帧图片的相机位姿，对应该帧的预积分类IntegrationBase
-class ImageFrame
-{
+class ImageFrame{
 public:
     ImageFrame(){};
     ImageFrame(const FeaturePointMap& _featurePoints, double _t):
@@ -25,7 +24,7 @@ public:
     bool is_key_frame;
 };
 void solveGyroscopeBias(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs);
-bool VisualIMUAlignment(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs, Vector3d &g, VectorXd &x);
-bool LinearAlignment(map<double, ImageFrame> &all_image_frame, Vector3d &g, VectorXd &x);
-void RefineGravity(map<double, ImageFrame> &all_image_frame, Vector3d &g, VectorXd &x);
+bool VisualIMUAlignment(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs, Vector3d &g, VectorXd &x, Eigen::Vector3d &TIC);
+bool LinearAlignment(map<double, ImageFrame> &all_image_frame, Vector3d &g, VectorXd &x, Eigen::Vector3d &TIC);
+void RefineGravity(map<double, ImageFrame> &all_image_frame, Vector3d &g, VectorXd &x, Eigen::Vector3d &TIC);
 MatrixXd TangentBasis(Vector3d &g0);

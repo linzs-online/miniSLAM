@@ -272,6 +272,12 @@ void MarginalizationInfo::marginalize(){
     //      (linearized_jacobians.transpose() * linearized_residuals - b).sum());
 }
 
+/**
+ * @brief 返回要保留下来的变量的地址
+ * 
+ * @param addr_shift 
+ * @return std::vector<double *> 
+ */
 std::vector<double *> MarginalizationInfo::getParameterBlocks(std::unordered_map<long, double *> &addr_shift)
 {
     std::vector<double *> keep_block_addr;
@@ -309,7 +315,7 @@ MarginalizationFactor::MarginalizationFactor(MarginalizationInfo* _marginalizati
     }
     //printf("residual size: %d, %d\n", cnt, n);
     set_num_residuals(marginalization_info->n);
-};
+}
 
 /**
  * @brief Evaluate实际上就是告诉优化器，怎么根据新的x，去求解残差、雅克比
@@ -362,3 +368,5 @@ bool MarginalizationFactor::Evaluate(double const *const *parameters, double *re
     }
     return true;
 }
+
+

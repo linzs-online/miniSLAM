@@ -1,7 +1,7 @@
 #include "../inc/pre_integrated.h"
+#include "../inc/utility.h"
 
-
-
+extern Eigen::Vector3d G;
 bool IMUAvailable(double &t, IMU_subscriber::Ptr &imu_subPtr){
     if(!imu_subPtr->acc_buf.empty() && t <= imu_subPtr->acc_buf.back().first)
         return true;
@@ -61,7 +61,7 @@ bool getIMUInterVal(double t0, double t1, IMU_subscriber::Ptr &imu_subPtr,
  * @param accVector 
  */
 Matrix3d initFirstIMUPose(vector<pair<double, Eigen::Vector3d>> &accVector){
-    ROS_INFO("init first imu pose\n");
+    ROS_INFO("init first imu pose");
     Eigen::Vector3d averAcc(0, 0, 0);
     int n = (int)accVector.size();
     for(size_t i = 0; i < accVector.size(); i++)
@@ -69,13 +69,12 @@ Matrix3d initFirstIMUPose(vector<pair<double, Eigen::Vector3d>> &accVector){
         averAcc = averAcc + accVector[i].second;
     }
     averAcc = averAcc / n;
-    ROS_INFO("averge acc %f %f %f\n", averAcc.x(), averAcc.y(), averAcc.z());
+    ROS_INFO("averge acc %f %f %f", averAcc.x(), averAcc.y(), averAcc.z());
     Matrix3d R0 = Utility::g2R(averAcc);
     cout << "init R0 " << endl << R0 << endl;
     return R0;
     //Vs[0] = Vector3d(5, 0, 0);
 }
-
 
 
 
@@ -118,7 +117,6 @@ void IntegrationBase::midPointIntegration(double _dt,
                             Eigen::Vector3d &result_delta_p, Eigen::Quaterniond &result_delta_q, Eigen::Vector3d &result_delta_v,
                             Eigen::Vector3d &result_linearized_ba, Eigen::Vector3d &result_linearized_bg, bool update_jacobian)
 {
-    ROS_INFO("midpoint integration"); 
     // 前一时刻的加速度计偏置修正
     Vector3d un_acc_0 = delta_q * (_acc_0 - linearized_ba);
     // 求 k 时刻 到 k+1 时刻的角速度中值

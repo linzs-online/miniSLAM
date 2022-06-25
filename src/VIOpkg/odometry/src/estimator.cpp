@@ -1,15 +1,17 @@
 #include "../inc/estimator.h"
-
+#include <stdio.h>
 
 using namespace std;
 std::mutex m_process;
+
 /**
  * @brief Construct a new Estimator:: Estimator object
  * 
- * @param _parametersPtr 
+ * @param _parametersPtr 初始位姿
  */
 Estimator::Estimator(Parameters::Ptr &_parametersPtr):td(_parametersPtr->TD), f_manager{Rs,_parametersPtr}{
-    ROS_INFO("init begins");
+    ROS_INFO("Estimator Construct");
+    solverFlag = INITIAL;
     paramPtr = _parametersPtr;
 
     m_process.lock();
@@ -28,15 +30,6 @@ Estimator::Estimator(Parameters::Ptr &_parametersPtr):td(_parametersPtr->TD), f_
         Vs[i].setZero();
         Bas[i].setZero();
         Bgs[i].setZero();
-
-        dt_buf[i].clear();
-        linear_acceleration_buf[i].clear();
-        angular_velocity_buf[i].clear();
-
-        if (pre_integrations[i] != nullptr){
-            delete pre_integrations[i];
-        }
-        pre_integrations[i] = nullptr;
     }
 
     // 根据Parameter类的数据初始化两个相机的外参
@@ -52,11 +45,6 @@ Estimator::Estimator(Parameters::Ptr &_parametersPtr):td(_parametersPtr->TD), f_
     td = paramPtr->TD;
     g = paramPtr->G;
     frameCount = 0;
-    all_image_frame.clear();
-
-    if (last_marginalization_info != nullptr)
-        delete last_marginalization_info;
-
     m_process.unlock();
 }
 /**
@@ -119,21 +107,20 @@ void Estimator::poseEstimation(pair<double, FeaturePointMap> &t_featurePointMap)
     double header = t_featurePointMap.first;    // 当前帧的时间
     FeaturePointMap featurePointMap = t_featurePointMap.second;
 
-    ROS_DEBUG("new image coming ------------------------------------------");
-    ROS_DEBUG("header = %lu", header);     
-    ROS_DEBUG("Adding feature points %lu", featurePointMap.size()); // 当前帧的特征点的数量
+    std::cout << "new image coming ------------------------------------------" << std::endl;
+    std::cout <<"header =" << header << " feature points size: " << featurePointMap.size() << std::endl;     
 
     // 检查两张图的视差，判断是否为关键帧，后面进行边缘化操作
     if (f_manager.addFeatureCheckParallax(frameCount, t_featurePointMap.second, td)){
         marginalization_flag = 0;
+        std::cout << "non key frame! " << std::endl;
     }
     else{
         marginalization_flag = 1;
+        std::cout << "non key frame!" << std::endl;
     }
-    ROS_DEBUG("%s", marginalization_flag ? "Non-keyframe" : "Keyframe");
-    ROS_DEBUG("Solving the %d frame", frameCount);
-    ROS_DEBUG("number of feature: %d", f_manager.getFeatureCount());
-    
+
+    std::cout << "solving the frame: " << frameCount <<  "  number of feature: " << f_manager.getFeatureCount() << std::endl;
     Headers[frameCount] = header;
     // 填充imageframe的容器以及更新临时预积分初始值
     ImageFrame imageframe(featurePointMap, header);
@@ -161,6 +148,7 @@ void Estimator::poseEstimation(pair<double, FeaturePointMap> &t_featurePointMap)
         f_manager.initFramePoseByPnP(frameCount, Ps, Rs, t_ic, R_ic);   // 每个特征点有了深度就可以进行求解PNP了，这里得到的是视觉的Ps,Rs
         f_manager.triangulate(frameCount, Ps, Rs, t_ic, R_ic);  // 双目视差三角化测得特征点深度
         if (frameCount == windowSize){
+            std::cout << "solver flag = initial" << std::endl;
             int i = 0;
             for (auto &frame_it : all_image_frame){
                 frame_it.second.R = Rs[i];
@@ -278,8 +266,6 @@ bool Estimator::initialStructure(){
 
 
     // 但是此时图像帧的数目可能会超过滑动窗口的大小，所以还需要对那些不被包含在滑动窗口里面图像帧进行位姿求解
-    map<double, ImageFrame>::iterator frame_it;
-    map<int, Vector3d>::iterator it;
     frame_it = all_image_frame.begin();
     for (int i = 0; frame_it != all_image_frame.end( ); frame_it++)
     {
@@ -310,7 +296,7 @@ bool Estimator::initialStructure(){
             int feature_id = id_pts.first;
             for (auto &i_p : id_pts.second)
             {   
-                it = sfm_tracked_points.find(feature_id);   // 首先找到已经通过 sfm 恢复出运动的点
+                auto it = sfm_tracked_points.find(feature_id);   // 首先找到已经通过 sfm 恢复出运动的点
                 if(it != sfm_tracked_points.end())
                 {
                     Vector3d world_pts = it->second;
@@ -406,7 +392,7 @@ bool Estimator::relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l)
 bool Estimator::visualInitialAlign(){
     VectorXd x;
     // 求解尺度因子 s， 优化重力矢量 g
-    bool result = VisualIMUAlignment(all_image_frame, Bgs, g, x);
+    bool result = VisualIMUAlignment(all_image_frame, Bgs, g, x, t_ic[0]);
     if(!result)
     {
         ROS_DEBUG("solve g failed!");
@@ -809,7 +795,7 @@ void Estimator::vector2double(){
         para_Ex_Pose[i][0] = t_ic[i].x();
         para_Ex_Pose[i][1] = t_ic[i].y();
         para_Ex_Pose[i][2] = t_ic[i].z();
-        Quaterniond q{t_ic[i]};
+        Eigen::Quaterniond q{R_ic[i]};
         para_Ex_Pose[i][3] = q.x();
         para_Ex_Pose[i][4] = q.y();
         para_Ex_Pose[i][5] = q.z();
@@ -892,33 +878,6 @@ void Estimator::double2vector()
         dep(i) = para_Feature[i][0];
     f_manager.setDepth(dep);
     td = para_Td[0][0];
-}
-
-/**
- * @brief 返回要保留下来的变量的地址
- * 
- * @param addr_shift 
- * @return std::vector<double *> 
- */
-std::vector<double *> MarginalizationInfo::getParameterBlocks(std::unordered_map<long, double *> &addr_shift)
-{
-    std::vector<double *> keep_block_addr; // 要保留下来的参数块的地址
-    keep_block_size.clear();
-    keep_block_idx.clear();
-    keep_block_data.clear();
-
-    for (const auto &it : parameter_block_idx)
-    {
-        if (it.second >= m) // 仅记录要保留下来的变量的地址
-        {
-            keep_block_size.push_back(parameter_block_size[it.first]);
-            keep_block_idx.push_back(parameter_block_idx[it.first]);
-            keep_block_data.push_back(parameter_block_data[it.first]);
-            keep_block_addr.push_back(addr_shift[it.first]);
-        }
-    }
-    sum_block_size = std::accumulate(std::begin(keep_block_size), std::end(keep_block_size), 0);
-    return keep_block_addr;
 }
 
 void Estimator::slideWindow()
@@ -1090,4 +1049,8 @@ double Estimator::reprojectionError(Matrix3d &Ri, Vector3d &Pi, Matrix3d &R_ici,
     double rx = residual.x();
     double ry = residual.y();
     return sqrt(rx * rx + ry * ry);
+}
+
+Estimator::~Estimator(){
+
 }

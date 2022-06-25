@@ -11,7 +11,6 @@
 #include <ros/assert.h>
 #include <iostream>
 #include <eigen3/Eigen/Dense>
-
 #include "utility.h"
 #include "../../parameters/src/parameters.h"
 #include "pre_integrated.h"
@@ -25,13 +24,11 @@
 class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
 {
   public:
+    IntegrationBase* pre_integration;
     IMUFactor() = delete;
-    IMUFactor(IntegrationBase* _pre_integration):pre_integration(_pre_integration)
-    {
-    }
+    IMUFactor(IntegrationBase* _pre_integration):pre_integration(_pre_integration){};
     virtual bool Evaluate(double const *const *parameters, double *residuals, double **jacobians) const
     {
-
         Eigen::Vector3d Pi(parameters[0][0], parameters[0][1], parameters[0][2]);
         Eigen::Quaterniond Qi(parameters[0][6], parameters[0][3], parameters[0][4], parameters[0][5]);
 
@@ -100,13 +97,13 @@ class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
                 jacobian_speedbias_i.block<3, 3>(0, 3) = -dp_dba; // 位置对加速度偏置
                 jacobian_speedbias_i.block<3, 3>(0, 6) = -dp_dbg;  // 位置对陀螺仪偏置
 
-#if 0
-            jacobian_speedbias_i.block<3, 3>(O_R, O_BG - O_V) = -dq_dbg;
-#else
+//#if 0
+            //jacobian_speedbias_i.block<3, 3>(O_R, O_BG - O_V) = -dq_dbg;
+//#else
                 //Eigen::Quaterniond corrected_delta_q = pre_integration->delta_q * Utility::deltaQ(dq_dbg * (Bgi - pre_integration->linearized_bg));
                 //jacobian_speedbias_i.block<3, 3>(O_R, O_BG - O_V) = -Utility::Qleft(Qj.inverse() * Qi * corrected_delta_q).bottomRightCorner<3, 3>() * dq_dbg;
                 jacobian_speedbias_i.block<3, 3>(3, 6) = -Utility::Qleft(Qj.inverse() * Qi * pre_integration->delta_q).bottomRightCorner<3, 3>() * dq_dbg;
-#endif
+//#endif
 
                 jacobian_speedbias_i.block<3, 3>(6, 0) = -Qi.inverse().toRotationMatrix(); // 速度对速度
                 jacobian_speedbias_i.block<3, 3>(6, 3) = -dv_dba; // 速度对加速度偏置
@@ -166,7 +163,5 @@ class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
     //void checkCorrection();
     //void checkTransition();
     //void checkJacobian(double **parameters);
-    IntegrationBase* pre_integration;
-
 };
 

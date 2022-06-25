@@ -16,8 +16,6 @@
 #include <Eigen/Dense>
 #include "utility.h"
 
-#include "../../parameters/src/parameters.h"
-
 // 视觉损失函数
 class ProjectionTwoFrameTwoCamFactor : public ceres::SizedCostFunction<2, 7, 7, 7, 7, 1, 1>
 {

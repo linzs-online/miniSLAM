@@ -2,7 +2,7 @@
 #include "../../parameters/src/parameters.h"
 #include "../../ros_node/inc/subscriber.h"
 #include <opencv2/opencv.hpp>
-
+#include "../../parameters/src/parameters.h"
 using namespace std;
                          // feature ID        Camare ID        feature:      
 using FeaturePointMap =  map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>;
@@ -25,16 +25,15 @@ public:
     map<int, cv::Point2f> cur_un_pts_map, prev_un_pts_map, prevLeftPtsMap;
     map<int, cv::Point2f> cur_un_right_pts_map, prev_un_right_pts_map;
     cv::Mat imTrack;
-    int inputImageCnt = 0;
-    FeaturePointMap featurePointMap;
+    int inputImageCnt;
+    FeaturePointMap featurePointMap; //map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>;
 
     // 这个特征类就是为了构建这个特征点队列
     queue<pair<double, FeaturePointMap>> t_featureQueue;
 
     FeatureTracker(Parameters::Ptr Ptr);
     FeatureTracker() = default;
-    ~FeatureTracker();
-    FeaturePointMap trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1);
+    void trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1);
     double distance(cv::Point2f &pt1, cv::Point2f &pt2);
     bool inBorder(const cv::Point2f &pt);
     cv::Mat setMask();
@@ -45,10 +44,5 @@ public:
                                vector<cv::Point2f> &curLeftPts, 
                                vector<cv::Point2f> &curRightPts,
                                map<int, cv::Point2f> &prevLeftPtsMap);
-};
-
-FeatureTracker::~FeatureTracker()
-{
-
 };
 

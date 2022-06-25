@@ -1,5 +1,5 @@
 #include "../inc/initial_alignment.h"
-
+#include "../../parameters/src/parameters.h"
 /**
  * @brief 用SfM的结果 和 粗糙的预积分结果 求解陀螺仪偏置，求解完成之后重新进行一次预积分
  * 
@@ -34,6 +34,7 @@ void solveGyroscopeBias(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs)
         b += tmp_A.transpose() * tmp_b;
     }
     // 求解超定方程
+    std::cout << A << std::endl;
     delta_bg = A.ldlt().solve(b);
     ROS_WARN_STREAM("gyroscope bias initial calibration " << delta_bg.transpose());
 
@@ -50,18 +51,18 @@ void solveGyroscopeBias(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs)
 }
 
 
-bool VisualIMUAlignment(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs, Vector3d &g, VectorXd &x)
+bool VisualIMUAlignment(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs, Vector3d &g, VectorXd &x, Eigen::Vector3d &TIC)
 {
     solveGyroscopeBias(all_image_frame, Bgs); // 用 SfM 的结果 联合 IMU的预积分 求解出陀螺仪的偏置 
 
-    if(LinearAlignment(all_image_frame, g, x)) // 求解重力矢量、尺度因子、各帧速度
+    if(LinearAlignment(all_image_frame, g, x, TIC)) // 求解重力矢量、尺度因子、各帧速度
         return true;
     else 
         return false;
 }
 
 // 主要作用就是求解尺度因子 s 和 重力矢量 g
-bool LinearAlignment(map<double, ImageFrame> &all_image_frame, Vector3d &g, VectorXd &x)
+bool LinearAlignment(map<double, ImageFrame> &all_image_frame, Vector3d &g, VectorXd &x, Eigen::Vector3d &TIC)
 {
     //all_image_frame 所有图像帧构成的map,图像帧保存了位姿，预积分量和关于角点的信息
     //g 重力加速度矢量
@@ -96,7 +97,7 @@ bool LinearAlignment(map<double, ImageFrame> &all_image_frame, Vector3d &g, Vect
             // 这里为了求解过程中保持数值的稳定性，对 H 矩阵中和 尺度因子 s 相乘的块除以100，这样最后算出来的尺度因子会扩大100倍
         tmp_A.block<3, 1>(0, 9) = frame_i->second.R.transpose() * (frame_j->second.T - frame_i->second.T) / 100.0;     
         
-        tmp_b.block<3, 1>(0, 0) = frame_j->second.pre_integration->delta_p + frame_i->second.R.transpose() * frame_j->second.R * TIC[0] - TIC[0];
+        tmp_b.block<3, 1>(0, 0) = frame_j->second.pre_integration->delta_p + frame_i->second.R.transpose() * frame_j->second.R * TIC - TIC;
         //cout << "delta_p   " << frame_j->second.pre_integration->delta_p.transpose() << endl;
         // 2. 速度预积分量对应 H 矩阵的部分
         tmp_A.block<3, 3>(3, 0) = -Matrix3d::Identity();
@@ -139,7 +140,7 @@ bool LinearAlignment(map<double, ImageFrame> &all_image_frame, Vector3d &g, Vect
     // 进一步优化重力矢量
     // 在上一步中得到了一个先验值，这个真实的重力矢量的模长可以用先验值求得，但是方向不一定与先验的方向完全一致，所以要进行优化
     // 1. 取先验矢量正切空间上的两个正交向量，然后给这两个正交向量加一个扰动参数，最后把这三个向量进行加和作为新的重力矢量放到预积分等式中进行优化
-    RefineGravity(all_image_frame, g, x);
+    RefineGravity(all_image_frame, g, x, TIC);
 
     s = (x.tail<1>())(0) / 100.0;
     (x.tail<1>())(0) = s;
@@ -151,7 +152,7 @@ bool LinearAlignment(map<double, ImageFrame> &all_image_frame, Vector3d &g, Vect
 }
 
 
-void RefineGravity(map<double, ImageFrame> &all_image_frame, Vector3d &g, VectorXd &x)
+void RefineGravity(map<double, ImageFrame> &all_image_frame, Vector3d &g, VectorXd &x, Eigen::Vector3d &TIC)
 {
     Vector3d g0 = g.normalized() * G.norm(); // 模长固定为 |G|
     Vector3d lx, ly;
@@ -183,7 +184,7 @@ void RefineGravity(map<double, ImageFrame> &all_image_frame, Vector3d &g, Vector
             tmp_A.block<3, 3>(0, 0) = -dt * Matrix3d::Identity();
             tmp_A.block<3, 2>(0, 6) = frame_i->second.R.transpose() * dt * dt / 2 * Matrix3d::Identity() * lxly;
             tmp_A.block<3, 1>(0, 8) = frame_i->second.R.transpose() * (frame_j->second.T - frame_i->second.T) / 100.0;     
-            tmp_b.block<3, 1>(0, 0) = frame_j->second.pre_integration->delta_p + frame_i->second.R.transpose() * frame_j->second.R * TIC[0] - TIC[0] - frame_i->second.R.transpose() * dt * dt / 2 * g0;
+            tmp_b.block<3, 1>(0, 0) = frame_j->second.pre_integration->delta_p + frame_i->second.R.transpose() * frame_j->second.R * TIC - TIC - frame_i->second.R.transpose() * dt * dt / 2 * g0;
 
             tmp_A.block<3, 3>(3, 0) = -Matrix3d::Identity();
             tmp_A.block<3, 3>(3, 3) = frame_i->second.R.transpose() * frame_j->second.R;

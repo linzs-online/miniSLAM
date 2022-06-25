@@ -1,17 +1,26 @@
 #include "../inc/publisher.h"
 
 
-FeaureTrackerPublisher::FeaureTrackerPublisher(ros::NodeHandle& nh,
-                                                std::string topic_name,
-                                                size_t buff_size)
-                                                :nh_(nh){
-    publisher_ = nh_.advertise<sensor_msgs::Image>(topic_name, buff_size);
- }
+Publisher::Publisher(ros::NodeHandle &nh):nh_(nh){
+    regsiterPublisher();
+}
 
-void FeaureTrackerPublisher::publish(const cv::Mat &imgTrack, const double t){
+
+void Publisher::regsiterPublisher(){
+    pub_imageTrack = nh_.advertise<sensor_msgs::Image>("image_track", 1000);
+    pub_odometry = nh_.advertise<nav_msgs::Odometry>("odometry", 1000);
+}
+
+
+void Publisher::pubImageTrack(const cv::Mat &imgTrack, const double t){
     std_msgs::Header header;
-    header.frame_id = "world";
+    header.frame_id = "imgTrack";
     header.stamp = ros::Time(t);
     sensor_msgs::ImagePtr imgTrackMsg = cv_bridge::CvImage(header, "bgr8", imgTrack).toImageMsg();
-    publisher_.publish(imgTrackMsg);
+    pub_imageTrack.publish(imgTrackMsg);
+}
+
+
+Publisher::~Publisher(){
+
 }

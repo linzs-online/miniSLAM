@@ -1,20 +1,18 @@
 #pragma once
 #include "../../ros_node/inc/subscriber.h"
-#include "estimator.h"
-#include "../../parameters/src/parameters.h"
+#include <eigen3/Eigen/Dense>
+using namespace Eigen;
 
-
-bool IMUAvailable(double t, IMU_subscriber::Ptr &imu_subPtr);
+bool IMUAvailable(double &t, IMU_subscriber::Ptr &imu_subPtr);
 bool getIMUInterVal(double t0, double t1, IMU_subscriber::Ptr &imu_subPtr, 
                                           vector<pair<double, Eigen::Vector3d>> &accVector, 
                                           vector<pair<double, Eigen::Vector3d>> &gyrVector);
-Matrix3d initFirstIMUPose(vector<pair<double, Eigen::Vector3d>> &accVector);                             
 
+Matrix3d initFirstIMUPose(vector<pair<double, Eigen::Vector3d>> &accVector);                             
 
 class IntegrationBase
 {
   public:
-    Parameters::Ptr paramPtr;
     double dt;
     Eigen::Vector3d acc_0, gyr_0;
     Eigen::Vector3d acc_1, gyr_1;
@@ -43,7 +41,6 @@ class IntegrationBase
     void push_back(double dt, const Eigen::Vector3d &acc, const Eigen::Vector3d &gyr);
     void propagate(double _dt, const Eigen::Vector3d &_acc_1, const Eigen::Vector3d &_gyr_1);
     void repropagate(const Eigen::Vector3d &_linearized_ba, const Eigen::Vector3d &_linearized_bg);
-
     void midPointIntegration(double _dt, 
                             const Eigen::Vector3d &_acc_0, const Eigen::Vector3d &_gyr_0,
                             const Eigen::Vector3d &_acc_1, const Eigen::Vector3d &_gyr_1,

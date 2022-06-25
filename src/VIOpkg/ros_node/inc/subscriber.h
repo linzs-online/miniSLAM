@@ -28,35 +28,7 @@ public:
     ~ImageSubscriber();
 };
 
-/**
- * @brief 从标准的ROS消息转转换成图片
- * 
- * @param img_msg 
- * @return cv::Mat 
- */
-cv::Mat getImageFromMsg(const sensor_msgs::ImageConstPtr &img_msg)
-{
-    cv_bridge::CvImageConstPtr ptr;
-    if (img_msg->encoding == "8UC1")
-    {
-        sensor_msgs::Image img;
-        img.header = img_msg->header;
-        img.height = img_msg->height;
-        img.width = img_msg->width;
-        img.is_bigendian = img_msg->is_bigendian;
-        img.step = img_msg->step;
-        img.data = img_msg->data;
-        img.encoding = "mono8";
-        ptr = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::MONO8);
-    }
-    else
-        ptr = cv_bridge::toCvCopy(img_msg, sensor_msgs::image_encodings::MONO8);
-
-    cv::Mat img = ptr->image.clone();
-    return img;
-}
-
-
+cv::Mat getImageFromMsg(const sensor_msgs::ImageConstPtr &img_msg);
 /**
  * @brief 订阅IMU信息
  * 

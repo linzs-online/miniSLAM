@@ -2,26 +2,37 @@ cmake_minimum_required(VERSION 3.0.2)
 project(odometry)
 
 find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  std_msgs
-  cv_bridge
-  geometry_msgs
-  image_transport
-  OpenCV
+    roscpp
+    std_msgs
+    cv_bridge
 )
+# include路径
+include_directories(${PROJECT_SOURCE_DIR}/inc
+                    ${catkin_INCLUDE_DIRS})
+find_package(Eigen3) 
+include_directories(${EIGEN3_INCLUDE_DIR})
 
-catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES odometry
-#  CATKIN_DEPENDS roscpp std_msgs
-#  DEPENDS system_lib
-)
+find_package(Ceres REQUIRED) 
+include_directories(${Ceres_INCLUDE_DIR})        
 
 
-include_directories(
-# include
-  ${PROJECT_SOURCE_DIR}/inc
-  ${catkin_INCLUDE_DIRS}
-  "/usr/include/eigen3"
-)
-add_executable(${PROJECT_NAME}_node src/odometry_node.cpp)
+include_directories("./ros_node/inc" 
+                    "./parameters/src"
+                    "./odometry/inc"
+                    "./feature_tracker/inc")
+
+add_library(${PROJECT_NAME} 
+            src/estimator.cpp
+            src/initial_alignment.cpp
+            src/initial_ex_rotation.cpp
+            src/feature_manager.cpp
+            src/pre_integrated.cpp
+            src/initial_sfm.cpp
+            src/marginalization_factor.cpp
+            src/pose_local_parameterization.cpp
+            src/projectionOneFrameTwoCamFactor.cpp
+            src/projectionTwoFrameOneCamFactor.cpp
+            src/projectionTwoFrameTwoCamFactor.cpp
+            src/solve_5pts.cpp
+            src/utility.cpp)
+target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${CERES_LIBRARIES})

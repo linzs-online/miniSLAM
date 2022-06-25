@@ -8,16 +8,11 @@
 #include <memory>
 
 using namespace std;
-using Vector3d = Eigen::Matrix<double, 3, 1>;
-using Vector2d = Eigen::Matrix<double, 2, 1>;
-using Matrix3d = Eigen::Matrix<double, 3, 3>;
-using Quaterniond = Eigen::Quaternion<double>;
-using MatrixXd = Eigen::Matrix<double, -1, -1>;
 
 
 const int windowSize = 10;
 const double FOCAL_LENGTH = 460.0;
-Eigen::Vector3d G{0.0, 0.0, 9.8};
+extern Eigen::Vector3d G;
 class Parameters
 {
 private:
@@ -45,7 +40,7 @@ public:
     std::vector<cv::Mat> distCoeffs; 
     std::vector<cv::Mat> cameraMatrix;
 
-    Eigen::Vector3d G{0.0, 0.0, 9.8};   
+    Eigen::Vector3d G;   
 
     double BIAS_ACC_THRESHOLD;
     double BIAS_GYR_THRESHOLD;

@@ -3,6 +3,7 @@
 #include <fstream>
 
 using namespace std;
+Eigen::Vector3d G{0.0, 0.0, 9.8};
 
 Parameters::Parameters(std::string configFilePath)
 {
@@ -59,7 +60,7 @@ void Parameters::readParameters(std::string configFilePath){
         // cv::cv2eigen(cv_CameraMat_1, CameraMat_1);
         cameraMatrix.emplace_back(cv_CameraMat_1);
     }
-
+    G = {0.0, 0.0, 9.8};
     MAX_CNT = parametersSettings["max_cnt"];
     MIN_DIST = parametersSettings["min_dist"];
     F_THRESHOLD = parametersSettings["F_threshold"];

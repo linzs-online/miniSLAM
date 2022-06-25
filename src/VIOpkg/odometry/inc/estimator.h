@@ -26,11 +26,8 @@ bool first_imu = false; // 中值积分需要使用，用于判断是否是第�
 
 class Estimator
 {
-private:
-    
 public:
     using Ptr = std::shared_ptr<Estimator>;
-
     enum MarginalizationFlag
     {
         MARGIN_OLD = 0,
@@ -38,7 +35,7 @@ public:
     };
     std::mutex mPropagate;
     std::mutex mBuf;
-    int solverFlag = 0;
+    int solverFlag;
     // VINS系统的两种状态：
     enum SolverFlag
     {
@@ -74,7 +71,7 @@ public:
     int inputImageCnt;
 
     double Headers[(windowSize + 1)];
-    IntegrationBase *pre_integrations[(windowSize + 1)];    // 窗口中每帧都有一个预积分�?
+    IntegrationBase* pre_integrations[(windowSize + 1)];    
     map<double, ImageFrame> all_image_frame; // 记录所有帧的特征点、以及图像帧对应的预积分
     Vector3d acc_0, gyr_0;
     Parameters::Ptr paramPtr;

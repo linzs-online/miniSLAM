@@ -461,3 +461,9 @@ void FeatureManager::removeOutlier(set<int> &outlierIndex)
         }
     }
 }
+
+//得到该特征点最后一次跟踪到的帧号
+int FeaturePoint::endFrame()
+{
+    return start_frame + feature_per_frame.size() - 1;
+}
